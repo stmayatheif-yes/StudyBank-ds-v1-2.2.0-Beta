@@ -573,6 +573,21 @@
   }
 }
 
+  .feedback-improve { font-style: italic; text-decoration: underline; cursor: pointer; }
+  .analysis { margin: 0 0 16px 0; font-size: 0.95rem; }
+  .analysis summary { cursor: pointer; font-weight: bold; opacity: 0.8; }
+  .analysis-body { margin-top: 10px; padding: 12px; line-height: 1.8; border-radius: 8px; background: var(--card); border: 1px solid var(--bd); }
+</style>
+<style>
+.subject-nav{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:56px 12px 4px}
+.subject-nav button,.version-btn{padding:8px 16px;border-radius:999px;border:1px solid var(--bd);background:var(--card);color:var(--text-color);cursor:pointer;font-size:0.95rem;transition:all 0.2s}
+.version-btn{display:flex;align-items:center;justify-content:center;width:100%;padding:10px 16px;border-radius:10px;margin:0}
+html[data-style="glass"] .subject-nav button,
+html[data-style="glass"] .version-btn{background:rgba(255,255,255,0.4)!important;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,0.6)!important;box-shadow:0 8px 32px rgba(0,0,0,0.08)}
+html[data-theme="dark"][data-style="glass"] .subject-nav button,
+html[data-theme="dark"][data-style="glass"] .version-btn{background:rgba(31,41,55,0.4)!important;border:1px solid rgba(255,255,255,0.15)!important;box-shadow:0 8px 32px rgba(0,0,0,0.3)}
+.subject-nav button.active,
+html[data-style="glass"] .subject-nav button.active{background:#3b82f6!important;color:#fff!important;border-color:transparent!important}
 </style>
 </head>
 <body>
@@ -604,6 +619,11 @@
 </div>
 
 <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">深色<br>模式</button>
+<nav id="subjectNav" class="subject-nav">
+  <button data-s="all" onclick="go('all')">全科總覽</button>
+  <button data-s="chinese" onclick="go('chinese')">國文</button>
+  <button data-s="english" onclick="go('english')">英文</button>
+</nav>
 <main id="app"></main>
 
 <!-- 各種彈窗保留原樣 -->
@@ -878,11 +898,95 @@ let currentPage = 'home';
 
 const A=document.getElementById("app");
 const id=q=>q.y+"-"+q.n;
-const S=()=>{try{return JSON.parse(localStorage.getItem("qb_study"))||{w:{},c:0,t:0}}catch(e){return{w:{},c:0,t:0}}};
-const save=s=>{try{localStorage.setItem("qb_study",JSON.stringify(s))}catch(e){}};
+const S=()=>{try{return JSON.parse(localStorage.getItem(storeKey()))||{w:{},c:0,t:0}}catch(e){return{w:{},c:0,t:0}}};
+const save=s=>{try{localStorage.setItem(storeKey(),JSON.stringify(s))}catch(e){}};
 const L="ABCDE";
 
-Promise.all(["./questions.json","./q2.json","./q3.json","./q4.json","./q5.json","./q6.json"].map(f=>fetch(f).then(r=>r.ok?r.json():[]).catch(()=>[]))).then(a=>{Q=a.flat();if(!Q.length)throw 0;home()}).catch(()=>A.textContent="讀取失敗，請確認題庫已上傳");
+const SUBJECTS={
+  chinese:{title:"學測國文刷題",tag:"學測國綜",label:"國文",store:"qb_study",files:["./questions.json","./q2.json","./q3.json","./q4.json","./q5.json","./q6.json"]},
+  english:{title:"學測英文刷題",tag:"學測英文",label:"英文",store:"qb_study_english"}
+};
+const SUB_KEYS=["all","chinese","english"];
+const DATA={chinese:[],english:[]};
+const LOADED={chinese:false,english:false};
+let cur="all";
+const storeKey=()=>(SUBJECTS[cur]&&SUBJECTS[cur].store)||"qb_study";
+const statsOf=k=>{try{return JSON.parse(localStorage.getItem(SUBJECTS[k].store))||{w:{},c:0,t:0}}catch(e){return{w:{},c:0,t:0}}};
+async function fetchJSON(f){try{const r=await fetch(f);return r.ok?await r.json():null}catch(e){return null}}
+async function loadSubject(k){
+  if(LOADED[k]) return DATA[k];
+  let arr=[];
+  if(k==="chinese"){
+    for(const f of SUBJECTS.chinese.files){const d=await fetchJSON(f); if(d) arr=arr.concat(d);}
+  }else{
+    for(let n=7;n<=60;n++){const d=await fetchJSON("./q"+n+".json"); if(!d) break; arr=arr.concat(d);}
+  }
+  DATA[k]=arr; LOADED[k]=true; return arr;
+}
+async function go(k,fromHash){
+  cur=k;
+  if(!fromHash) setHash(k);
+  try{sessionStorage.setItem("lastSub",k)}catch(e){}
+  updateNav();
+  // 進入任一科目頁時，側邊欄高亮與頂端切換列要回到「首頁」狀態（從設置頁跳回來時也一樣）
+  document.getElementById("navHome").classList.add("active");
+  document.getElementById("navSettings").classList.remove("active");
+  document.getElementById("subjectNav").style.display="";
+  const need = k==="all" ? ["chinese","english"] : [k];
+  if(need.every(x=>LOADED[x])){ Q = k==="all" ? [] : DATA[k]; home(); return; }
+  A.innerHTML='<div class="card"><p class="meta"><span>載入中…</span></p></div>';
+  await Promise.all(need.map(loadSubject));
+  if(cur===k){ Q = k==="all" ? [] : DATA[k]; home(); }
+}
+function setHash(h){ if(location.hash!=="#"+h) history.replaceState(null,"","#"+h); }
+function showSettingsDirect(){
+  document.getElementById("navHome").classList.remove("active");
+  document.getElementById("navSettings").classList.add("active");
+  document.getElementById("subjectNav").style.display="none";
+  currentPage="settings";
+  renderSettings();
+}
+function updateNav(){document.querySelectorAll("#subjectNav button").forEach(b=>b.classList.toggle("active",b.dataset.s===cur));}
+function openSubjectModal(){document.getElementById("subjectModal").classList.add("active");}
+function pickSubject(k){
+  document.getElementById("subjectModal").classList.remove("active");
+  // 使用者可能已經切到設置頁，選科目時要把側邊欄切回首頁、顯示科目切換按鈕
+  document.getElementById("navHome").classList.add("active");
+  document.getElementById("navSettings").classList.remove("active");
+  document.getElementById("subjectNav").style.display="";
+  go(k);
+}
+function renderOverview(){
+  currentPage="home";
+  const card=k=>{
+    const sub=SUBJECTS[k], arr=DATA[k], st=statsOf(k), ready=arr.length>0;
+    return `<div class="card" style="margin-bottom:16px">
+      <div class="header-row"><h2>${sub.title}</h2></div>
+      <p class="meta"><span>${ready?`題庫 ${arr.length} 題｜作答 ${st.t}，答對 ${st.c}（${st.t?Math.round(st.c/st.t*100):0}%）｜錯題 ${Object.keys(st.w).length}`:"題庫準備中"}</span></p>
+      <button class="go" ${ready?"":"disabled"} onclick="go('${k}')">${ready?"進入"+sub.label+"刷題":"準備中"}</button>
+    </div>`;
+  };
+  const notice = SYSTEM_NOTICE.trim()!=="" ? `<div class="sys-notice"><div class="sys-notice-icon">📢</div><div class="sys-notice-content">${SYSTEM_NOTICE}</div></div>` : "";
+  A.innerHTML=notice+card("chinese")+card("english");
+  renderAnnouncements();
+  A.insertAdjacentHTML("beforeend", '<div class="feedback-link feedback-improve" onclick="openFeedbackModal(\'improve\')">任何改進想法？點擊意見反饋。</div>');
+  const mq=document.getElementById("marqueeBar");
+  const vbtn='<div style="margin:0 0 20px"><button class="btn-icon" style="width:100%;height:48px;font-size:1rem" onclick="openVersionModal()" title="版本內容">版本內容</button></div>';
+  if(mq) mq.insertAdjacentHTML("afterend", vbtn); else A.insertAdjacentHTML("beforeend", vbtn);
+}
+window.addEventListener("hashchange",()=>{const h=location.hash.slice(1); if(SUB_KEYS.includes(h)&&h!==cur) go(h,true);});
+function initRoute(){
+  const h=location.hash.slice(1);
+  if(h==="settings"){
+    let last=null; try{last=sessionStorage.getItem("lastSub")}catch(e){}
+    cur = last || "all";
+    loadSubject("chinese"); loadSubject("english");
+    showSettingsDirect();
+  }
+  else if(SUB_KEYS.includes(h)){ go(h,true); }
+  else { go("all",true); openSubjectModal(); }
+}
+window.addEventListener("DOMContentLoaded",initRoute);
 
 function openVersionModal() { document.getElementById('versionModal').classList.add('active'); }
 function closeVersionModal(e) {
@@ -919,7 +1023,7 @@ function searchQuestions() {
     const regex = new RegExp(`(${escapeRegExp(rawKeyword)}|${escapeRegExp(normalizeText(rawKeyword))})`, 'gi');
     highlightedText = highlightedText.replace(regex, '<span class="highlight">$1</span>');
     const typeStr = q.a.length > 1 ? "[多選]" : "[單選]";
-    html += `<button class="search-result-item" onclick="startFromSearch(${index})"><span class="search-result-meta">${q.y} 學測國綜${typeStr}第${q.n}題</span><span>${highlightedText}</span></button>`;
+    html += `<button class="search-result-item" onclick="startFromSearch(${index})"><span class="search-result-meta">${q.y} ${SUBJECTS[cur].tag}${typeStr}第${q.n}題</span><span>${highlightedText}</span></button>`;
   });
   container.innerHTML = html;
 }
@@ -939,17 +1043,18 @@ function startTypePractice(order) {
 }
 
 function home(){
+  if(cur==="all"){ renderOverview(); return; }
+  if(!Q.length){ A.innerHTML=`<div class="card"><h2>${SUBJECTS[cur].title}</h2><p class="meta"><span>題庫準備中，之後會開放。</span></p></div>`; return; }
   currentPage = 'home'; // 🌟 標記目前在首頁
   const ys = [...new Set(Q.map(q=>q.y))].sort((a,b) => a - b);
   const s=S();
   let noticeHTML = "";
-  if (SYSTEM_NOTICE.trim() !== "") noticeHTML = `<div class="sys-notice"><div class="sys-notice-icon">📢</div><div class="sys-notice-content">${SYSTEM_NOTICE}</div></div>`;
 
   A.innerHTML=`${noticeHTML}
   <div class="card">
     <div class="header-row">
-      <h2>學測國文刷題</h2>
-      <button class="btn-icon" onclick="openVersionModal()" title="版本內容">版本內容</button>
+      <h2>${SUBJECTS[cur].title}</h2>
+      
       <button class="btn-icon" onclick="openSearchModal()" title="搜尋題目">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"></circle><line x1="21" y1="21" x2="15" y2="15"></line></svg>
         <span class="search-btn-text">搜尋題目</span>
@@ -969,86 +1074,57 @@ function home(){
       </div>
     </div>
   </div>
-<div class="feedback-link" onclick="openFeedbackModal('improve')">任何改進想法？點擊意見反饋。</div>`;
-renderAnnouncements();
+<div class="feedback-link feedback-improve" onclick="openFeedbackModal('improve')">任何改進想法？點擊意見反饋。</div>`;
 }
 
 // 🌟 核心修改：隨機抽題時，自動將題組綁定並連續出題
+// 找出某題所屬的題組範圍（依題號落在哪個【x~y題為題組題】範圍內判斷）
+function findGroup(q){
+  const qn=parseInt(q.n);
+  for(const x of Q){
+    if(x.y!==q.y) continue;
+    const m=x.q.match(/【(\d+)~(\d+)題為題組題】/);
+    if(m && qn>=+m[1] && qn<=+m[2]) return {y:q.y,start:+m[1],end:+m[2]};
+  }
+  return null;
+}
+function groupMembers(g){
+  return Q.filter(x=>x.y===g.y && +x.n>=g.start && +x.n<=g.end).sort((a,b)=>+a.n-+b.n);
+}
+
+// 🌟 隨機刷題 / 錯題本：以「單位」為單位打亂（獨立題一題一單位，題組整組一單位）
 function start(m,v){
-  currentPage = 'quiz'; // 🌟 標記目前在刷題
+  currentPage='quiz';
   const s=S();
-  let baseList = Q.filter(q=>m=="all"||(m=="y"&&q.y==v)||(m=="w"&&s.w[id(q)]));
-  if(!baseList.length){alert("沒有題目");return}
+  const pool=Q.filter(q=>m=="all"||(m=="y"&&q.y==v)||(m=="w"&&s.w[id(q)]));
+  if(!pool.length){alert("沒有題目");return}
 
-  if (m === "all" || m === "w") {
-    // 處理隨機模式：把題組綁在一起
-    let bundledList = [];
-    let processedIds = new Set();
-
-    baseList.forEach(q => {
-      if (processedIds.has(id(q))) return;
-
-      // 檢查這題有沒有題組標籤
-      const groupMatch = q.q.match(/【(\d+)~(\d+)題為題組題】/);
-      if (groupMatch) {
-        const startN = parseInt(groupMatch[1]);
-        const endN = parseInt(groupMatch[2]);
-        
-        // 把整個題組拉出來，並依照題號排序
-        let groupQs = baseList.filter(item => 
-          item.y === q.y && 
-          parseInt(item.n) >= startN && 
-          parseInt(item.n) <= endN
-        ).sort((a,b) => parseInt(a.n) - parseInt(b.n));
-
-        groupQs.forEach(gq => {
-          bundledList.push(gq);
-          processedIds.add(id(gq));
-        });
-      } else {
-        // 獨立題目
-        bundledList.push(q);
-        processedIds.add(id(q));
-      }
-    });
-    // 最後把「題組包」跟「獨立題目」隨機打亂
-    list = bundledList.sort(() => Math.random() - 0.5);
-    
-    // 但因為隨機打亂會把題組拆散，所以我們要再重新遍歷一次，確保題組內部是連續的
-    let finalList = [];
-    let seen = new Set();
-    list.forEach(q => {
-      if (seen.has(id(q))) return;
-      const groupMatch = q.q.match(/【(\d+)~(\d+)題為題組題】/);
-      if (groupMatch) {
-        const startN = parseInt(groupMatch[1]);
-        const endN = parseInt(groupMatch[2]);
-        let groupQs = Q.filter(item => 
-          item.y === q.y && 
-          parseInt(item.n) >= startN && 
-          parseInt(item.n) <= endN
-        ).sort((a,b) => parseInt(a.n) - parseInt(b.n));
-        
-        groupQs.forEach(gq => {
-           if(!seen.has(id(gq))) {
-             finalList.push(gq);
-             seen.add(id(gq));
-           }
-        });
-      } else {
-        finalList.push(q);
+  if(m==="all"||m==="w"){
+    const poolIds=new Set(pool.map(id));
+    const seen=new Set();
+    const units=[];
+    pool.forEach(q=>{
+      if(seen.has(id(q))) return;
+      const g=findGroup(q);
+      if(g){
+        // 錯題本只取該組中答錯的題；隨機刷題則整組都取
+        const members=groupMembers(g).filter(x=>poolIds.has(id(x)));
+        members.forEach(x=>seen.add(id(x)));
+        units.push(members);
+      }else{
         seen.add(id(q));
+        units.push([q]);
       }
     });
-    list = finalList;
-
-  } else {
+    units.sort(()=>Math.random()-0.5);
+    list=units.flat();
+  }else{
     // 依年度模式：直接照題號排
-    list = baseList.sort((a, b) => parseInt(a.n) - parseInt(b.n));
+    list=pool.sort((a,b)=>parseInt(a.n)-parseInt(b.n));
   }
 
-  i=0; userAnswers = {}; sessionStats = { total: list.length, correct: 0 };
-  isReviewingWrong = (m === "w"); 
+  i=0; userAnswers={}; sessionStats={total:list.length,correct:0};
+  isReviewingWrong=(m==="w");
   show();
 }
 
@@ -1137,9 +1213,10 @@ function show(){
         }).join("")+
     `<div id="f">${done ? generateFeedback(q) : `<button class="go" onclick="submit()">送出答案</button>`}</div>
   </div>
-  <div class="feedback-link" onclick="openFeedbackModal('issue')">題目有問題？點擊反饋。</div>`;
+  <div class="feedback-link feedback-improve" onclick="openFeedbackModal('issue')">題目有問題？點擊反饋。</div>`;
 }
 
+const escHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function generateFeedback(q){
   const p = userAnswers[id(q)] ? [...userAnswers[id(q)]].sort().map(k=>L[k]).join("") : "";
   const ok = p == q.a;
@@ -1147,7 +1224,7 @@ function generateFeedback(q){
   let feedbackIcon = ok ? `<svg viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon-lg"><polyline points="20 6 9 17 4 12"></polyline></svg>` : `<svg viewBox="0 0 24 24" fill="none" stroke="var(--no)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon-lg"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
   let nextIcon = isLast ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>` : "";
   let btnNext = `<button class="btn-next" onclick="${isLast ? 'showReport()' : 'next()'}">${nextIcon}${isLast ? "看測驗結果" : "下一題"}</button>`;
-  return `<div class="feedback" style="border-left-color: ${ok ? 'var(--ok)' : 'var(--no)'}"><p style="margin: 0 0 12px 0; font-weight: bold; color: ${ok ? 'var(--ok)' : 'var(--no)'}; display: flex; align-items: center;">${feedbackIcon}${ok ? "答對了！" : "答錯了"}</p><p style="margin: 0 0 16px 0; font-size: 0.95rem;">正確答案：<strong>${q.a}</strong></p>${btnNext}</div>`;
+  return `<div class="feedback" style="border-left-color: ${ok ? 'var(--ok)' : 'var(--no)'}"><p style="margin: 0 0 12px 0; font-weight: bold; color: ${ok ? 'var(--ok)' : 'var(--no)'}; display: flex; align-items: center;">${feedbackIcon}${ok ? "答對了！" : "答錯了"}</p><p style="margin: 0 0 16px 0; font-size: 0.95rem;">正確答案：<strong>${q.a}</strong></p><details class="analysis"><summary>查看解析</summary><div class="analysis-body">${q.e ? escHtml(q.e).replace(/\n/g,'<br>') : '暫無解析'}</div></details>${btnNext}</div>`;
 }
 
 function pick(k){ if(done)return; const q=list[i]; if(q.a.length==1){picks=new Set([k]);submit();return} picks.has(k)?picks.delete(k):picks.add(k); document.getElementById("o"+k).classList.toggle("sel"); }
@@ -1232,11 +1309,14 @@ function toggleSidebar() {
 function switchPage(page) {
   document.getElementById('navHome').classList.toggle('active', page === 'home');
   document.getElementById('navSettings').classList.toggle('active', page === 'settings');
+  document.getElementById('subjectNav').style.display = page === 'home' ? '' : 'none';
+  if (page === 'settings') setHash('settings'); else setHash(cur);
+  if (page === 'settings') { const sm = document.getElementById('subjectModal'); if (sm) sm.classList.remove('active'); }
   
   toggleSidebar();
 
   if (page === 'home') {
-    if (currentPage === 'quiz') { show(); } else { home(); }
+    if (currentPage === 'quiz') { show(); } else { go(cur, true); }
   } else if (page === 'settings') {
     renderSettings(); 
   }
@@ -1339,6 +1419,17 @@ function resetAppearance() {
 }
 
 function renderSettings() {
+  // 重新渲染前記住各排色塊的橫向捲動位置，渲染後還原，避免選色/自訂/編輯後跳回最前面
+  const scrollKeep = Array.from(document.querySelectorAll('.preset-scroll-wrapper')).map(el => el.scrollLeft);
+  const pageY = window.scrollY;
+  _renderSettings();
+  document.querySelectorAll('.preset-scroll-wrapper').forEach((el, i) => {
+    if (scrollKeep[i] !== undefined) el.scrollLeft = scrollKeep[i];
+  });
+  window.scrollTo(0, pageY);
+}
+
+function _renderSettings() {
   const currentStyle = localStorage.getItem('style') || 'solid';
   const currentBgType = localStorage.getItem('bg_type') || 'gradient';
   const currentBg1 = localStorage.getItem('bg_color_1') || '#f0f2f5';
@@ -1693,6 +1784,17 @@ function goToFeedbackMail() {
 </script>
 
   <!-- 問題回報彈出視窗 -->
+<div id="subjectModal" class="modal-overlay" onclick="if(event.target===this)pickSubject('all')">
+  <div class="modal-content" onclick="event.stopPropagation()" style="width: 340px; text-align: center;">
+    <h3>想先去哪一科？</h3>
+    <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px;">
+      <button class="go" onclick="pickSubject('chinese')">國文</button>
+      <button class="go" onclick="pickSubject('english')">英文</button>
+      <button class="go" style="background: var(--bd); color: var(--text-color); box-shadow: none;" onclick="pickSubject('all')">先不選擇</button>
+    </div>
+  </div>
+</div>
+
 <div id="feedbackModal" class="modal-overlay" onclick="closeFeedbackModal(event)">
   <div class="modal-content" onclick="event.stopPropagation()" style="text-align: center;">
     <h3 style="justify-content: center;">問題回報</h3>
