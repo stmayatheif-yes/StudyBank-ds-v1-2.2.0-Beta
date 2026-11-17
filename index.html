@@ -900,7 +900,7 @@ const A=document.getElementById("app");
 const id=q=>q.y+"-"+q.n;
 const S=()=>{try{return JSON.parse(localStorage.getItem(storeKey()))||{w:{},c:0,t:0}}catch(e){return{w:{},c:0,t:0}}};
 const save=s=>{try{localStorage.setItem(storeKey(),JSON.stringify(s))}catch(e){}};
-const L="ABCDE";
+const L="ABCDEFGHIJKL";
 
 const SUBJECTS={
   chinese:{title:"學測國文刷題",tag:"學測國綜",label:"國文",store:"qb_study",files:["./questions.json","./q2.json","./q3.json","./q4.json","./q5.json","./q6.json"]},
