@@ -108,7 +108,7 @@
         <details class="analysis"><summary>查看翻譯</summary>
           <div class="analysis-body">${a.translation ? fmt(a.translation) : "翻譯準備中"}</div>
         </details>
-        ${a.notes ? `<details class="analysis"><summary>注釋</summary><div class="analysis-body">${fmt(a.notes)}</div></details>` : ""}
+        <details class="analysis"><summary>注釋</summary><div class="analysis-body">${a.notes ? fmt(a.notes) : "暫無"}</div></details>
       </div>
       <button class="go" style="margin-bottom:20px" onclick="ArtUI.back()">← 返回文章總覽</button>`;
     window.scrollTo(0, 0);
