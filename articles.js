@@ -15,6 +15,12 @@
 
   const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const fmt = s => esc(s).replace(/\n/g, "<br>");
+  // 注釋：每一行變成一個條列項目，沒有注釋則顯示「暫無」
+  const notesHTML = s => {
+    const items = String(s || "").split("\n").map(x => x.trim()).filter(Boolean);
+    if (!items.length) return "暫無";
+    return `<ul class="art-notes">${items.map(x => `<li>${esc(x)}</li>`).join("")}</ul>`;
+  };
 
   // 樣式
   const css = `
@@ -31,6 +37,8 @@
     .art-meta{font-size:.85rem;opacity:.7}
     .art-original{margin-top:16px;font-size:1.05rem;line-height:2;white-space:normal}
     .art-entry .go{margin-top:12px}
+    .art-notes{margin:0;padding-left:1.4em;line-height:1.8;font-size:.95rem}
+    .art-notes li{margin-bottom:6px}
   `;
   const style = document.createElement("style");
   style.textContent = css;
@@ -108,7 +116,7 @@
         <details class="analysis"><summary>查看翻譯</summary>
           <div class="analysis-body">${a.translation ? fmt(a.translation) : "翻譯準備中"}</div>
         </details>
-        <details class="analysis"><summary>注釋</summary><div class="analysis-body">${a.notes ? fmt(a.notes) : "暫無"}</div></details>
+        <details class="analysis"><summary>注釋</summary><div class="analysis-body">${notesHTML(a.notes)}</div></details>
       </div>
       <button class="go" style="margin-bottom:20px" onclick="ArtUI.back()">← 返回文章總覽</button>`;
     window.scrollTo(0, 0);
