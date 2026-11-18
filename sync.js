@@ -113,92 +113,168 @@ async function uploadLocal(snap) {
   });
 }
 
-// ---------- 介面 ----------
-const bar = document.createElement("div");
-bar.id = "syncBar";
-bar.style.cssText = "position:fixed;left:10px;bottom:10px;z-index:9998;max-width:calc(100% - 20px);background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px 12px;box-shadow:var(--shadow);font-size:.9rem;color:var(--text-color)";
-bar.innerHTML = `
-  <div id="syncMsg" style="margin-bottom:6px"></div>
-  <div id="syncBtns" style="display:flex;flex-wrap:wrap;gap:6px"></div>`;
-document.body.appendChild(bar);
+// ---------- 確認彈窗（網站樣式） ----------
+const confirmEl = document.createElement("div");
+confirmEl.id = "syncConfirm";
+confirmEl.className = "modal-overlay";
+confirmEl.innerHTML = `
+  <div class="modal-content" onclick="event.stopPropagation()" style="width:min(380px,90vw);text-align:center">
+    <h3 id="scTitle" style="justify-content:center"></h3>
+    <p id="scText" style="text-align:left;line-height:1.7;margin:8px 0 18px"></p>
+    <div class="modal-actions" style="margin-top:0">
+      <button class="go" id="scOk"></button>
+      <button class="go" id="scCancel" style="background:var(--bd);color:var(--text-color);box-shadow:none">取消</button>
+    </div>
+  </div>`;
+document.body.appendChild(confirmEl);
 
-const msgEl = () => document.getElementById("syncMsg");
-const btnsEl = () => document.getElementById("syncBtns");
-function setMsg(t) { msgEl().textContent = t || ""; }
-function btn(label, onClick, disabled) {
+function askConfirm(title, text, okText) {
+  return new Promise(resolve => {
+    document.getElementById("scTitle").textContent = title;
+    document.getElementById("scText").textContent = text;
+    const ok = document.getElementById("scOk");
+    const cancel = document.getElementById("scCancel");
+    ok.textContent = okText;
+    const done = v => { confirmEl.classList.remove("active"); ok.onclick = cancel.onclick = confirmEl.onclick = null; resolve(v); };
+    ok.onclick = () => done(true);
+    cancel.onclick = () => done(false);
+    confirmEl.onclick = e => { if (e.target === confirmEl) done(false); };
+    confirmEl.classList.add("active");
+  });
+}
+
+// ---------- 雲端同步頁（由側邊欄開啟） ----------
+const pageEl = document.createElement("div");
+pageEl.id = "syncPage";
+pageEl.className = "modal-overlay";
+pageEl.innerHTML = `
+  <div class="modal-content" onclick="event.stopPropagation()" style="width:min(420px,92vw)">
+    <h3>☁️ 雲端同步</h3>
+    <div id="syncBody"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="SyncPage.close()">關閉</button>
+    </div>
+  </div>`;
+document.body.appendChild(pageEl);
+pageEl.addEventListener("click", e => { if (e.target === pageEl) SyncPage.close(); });
+
+const bodyEl = () => document.getElementById("syncBody");
+let msgText = "";
+
+function btn(label, onClick, cls) {
   const b = document.createElement("button");
   b.textContent = label;
-  b.disabled = !!disabled;
+  b.className = cls || "go";
+  b.style.marginTop = "8px";
   b.onclick = onClick;
   return b;
 }
-function renderBar() {
-  btnsEl().innerHTML = "";
+function renderPage() {
+  const box = bodyEl();
+  box.innerHTML = "";
+  const p = document.createElement("p");
+  p.style.cssText = "line-height:1.7;margin:4px 0 12px";
   if (!user) {
-    setMsg("登入 Google 以同步刷題記錄");
-    btnsEl().appendChild(btn("登入／註冊（Google）", login));
-    return;
-  }
-  setMsg("已登入：" + (user.email || ""));
-  if (pending) {
-    setMsg("雲端已有不同的紀錄，請選擇要以哪一邊為準：");
-    btnsEl().appendChild(btn("覆蓋本機", overwriteLocal));
-    btnsEl().appendChild(btn("覆蓋雲端", overwriteCloud));
+    p.textContent = "登入 Google 以同步刷題記錄（錯題本、作答紀錄、外觀設定）。未登入時仍可正常使用，紀錄只存在本機。";
+    box.appendChild(p);
+    box.appendChild(btn("登入／註冊（Google）", login));
   } else {
-    btnsEl().appendChild(btn("同步刷題記錄", manualSync));
+    p.textContent = "已登入：" + (user.email || "");
+    box.appendChild(p);
+    if (pending) {
+      const q = document.createElement("p");
+      q.style.cssText = "line-height:1.7;margin:4px 0";
+      q.textContent = "雲端已有不同的紀錄，請選擇要以哪一邊為準：";
+      box.appendChild(q);
+      box.appendChild(btn("覆蓋本機（拿雲端資料覆蓋本機）", overwriteLocal));
+      box.appendChild(btn("覆蓋雲端（拿本機資料覆蓋雲端）", overwriteCloud));
+    } else {
+      box.appendChild(btn("同步刷題記錄", manualSync));
+    }
+    box.appendChild(btn("登出", logout, "go"));
   }
-  btnsEl().appendChild(btn("登出", logout));
+  const m = document.createElement("p");
+  m.id = "syncMsg";
+  m.style.cssText = "min-height:1.4em;margin:12px 0 0;font-size:.9rem;opacity:.8";
+  m.textContent = msgText;
+  box.appendChild(m);
+}
+function setMsg(t) { msgText = t || ""; const m = document.getElementById("syncMsg"); if (m) m.textContent = msgText; }
+
+const SyncPage = {
+  open() {
+    // 從側邊欄開啟時先收起側邊欄
+    const sb = document.getElementById("sidebar");
+    if (sb && sb.classList.contains("active") && typeof toggleSidebar === "function") toggleSidebar();
+    renderPage();
+    pageEl.classList.add("active");
+  },
+  close() { pageEl.classList.remove("active"); }
+};
+window.SyncPage = SyncPage;
+
+// 側邊欄加入「雲端同步」
+const navSettings = document.getElementById("navSettings");
+if (navSettings) {
+  const item = document.createElement("div");
+  item.className = "sidebar-item";
+  item.id = "navSync";
+  item.textContent = "☁️ 雲端同步";
+  item.onclick = () => SyncPage.open();
+  navSettings.insertAdjacentElement("afterend", item);
 }
 
 // ---------- 功能 ----------
 async function login() {
   try { await signInWithPopup(auth, new GoogleAuthProvider()); }
-  catch (e) { setMsg("登入失敗：" + e.code); }
+  catch (e) { setMsg("登入失敗：" + e.code); renderPage(); }
 }
 async function logout() {
-  await signOut(auth);
+  const ok = await askConfirm("登出", "確定要登出雲端帳號嗎？登出後仍可在本機刷題，但不會同步。", "登出");
+  if (ok) await signOut(auth);
 }
 
 // 登入後：比對本機與雲端
 async function checkAfterLogin() {
   cloudSnap = await fetchCloud();
-  if (!cloudSnap) { pending = false; renderBar(); return; }   // 雲端還沒有資料：不需選擇
+  if (!cloudSnap) { pending = false; return; }
   const local = readLocal(localStorage);
   pending = canonical(local) !== canonical({ records: cloudSnap.records, settings: cloudSnap.settings });
   if (!pending) markSynced(local);
-  renderBar();
+  else SyncPage.open();          // 有出入：自動打開同步頁，讓使用者選擇
 }
 
 async function overwriteLocal() {
-  if (!confirm("確定要用雲端資料覆蓋本機嗎？本機紀錄將被取代，此操作無法復原。")) return;
+  const ok = await askConfirm("覆蓋本機", "確定要用雲端資料覆蓋本機嗎？本機目前的紀錄與設定會被取代，此操作無法復原。", "覆蓋本機");
+  if (!ok) return;
   writeLocal({ records: cloudSnap.records, settings: cloudSnap.settings }, localStorage);
   markSynced({ records: cloudSnap.records, settings: cloudSnap.settings });
   location.reload();
 }
 
 async function overwriteCloud() {
-  if (!confirm("確定要用本機資料覆蓋雲端嗎？雲端紀錄將被取代，此操作無法復原。")) return;
+  const ok = await askConfirm("覆蓋雲端", "確定要用本機資料覆蓋雲端嗎？雲端的紀錄會被取代，此操作無法復原。", "覆蓋雲端");
+  if (!ok) return;
   const local = readLocal(localStorage);
-  await uploadLocal(local);
-  markSynced(local);
-  pending = false;
-  setMsg("已用本機資料覆蓋雲端");
-  btnsEl().innerHTML = "";
-  btnsEl().appendChild(btn("同步刷題記錄", manualSync));
-  btnsEl().appendChild(btn("登出", logout));
+  try {
+    await uploadLocal(local);
+    markSynced(local);
+    pending = false;
+    setMsg("已用本機資料覆蓋雲端");
+  } catch (e) { setMsg("覆蓋失敗，請稍後再試"); }
+  renderPage();
 }
 
-// 手動同步（同步一律是「本機覆蓋雲端」）
 async function manualSync() {
   const now = Date.now();
   const local = readLocal(localStorage);
   if (answeredCount(local) < MIN_MANUAL_QUESTIONS) {
     setMsg("刷題紀錄少於 " + MIN_MANUAL_QUESTIONS + " 題，暫時不能同步");
-    return;
+    renderPage(); return;
   }
   if (now - getLastAt() < COOLDOWN_MS) {
     setMsg("操作太頻繁，請稍後再試");
-    return;
+    renderPage(); return;
   }
   try {
     await uploadLocal(local);
@@ -207,9 +283,10 @@ async function manualSync() {
   } catch (e) {
     setMsg("同步失敗，資料仍保留在本機，請稍後再試");
   }
+  renderPage();
 }
 
-// 離開網站：有變動就自動同步（不受題數門檻限制），但首次有出入還沒選擇時不動雲端
+// 離開網站：有變動就自動同步（不受 5 題限制）；首次有出入還沒選擇時不動雲端
 function autoSyncOnLeave() {
   if (!user || pending) return;
   const local = readLocal(localStorage);
@@ -224,6 +301,6 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 onAuthStateChanged(auth, async (u) => {
   user = u;
   if (u) await checkAfterLogin();
-  else { pending = false; cloudSnap = null; renderBar(); }
+  else { pending = false; cloudSnap = null; }
+  if (pageEl.classList.contains("active")) renderPage();
 });
-renderBar();
