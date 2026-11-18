@@ -1856,6 +1856,12 @@ function goToFeedbackMail() {
     return snap.exists() ? snap.data() : null;
   };
   </script>
+
+  <div style="position:fixed;bottom:10px;left:10px;z-index:9999;background:#fff;padding:8px;border:1px solid #ccc;border-radius:8px">
+  <button onclick="loginGoogle()">登入</button>
+  <button onclick="saveRecord({test:1})">存測試</button>
+  <button onclick="loadRecord().then(d=>alert(JSON.stringify(d)))">讀測試</button>
+  </div>
   
 </body>
 </html>
