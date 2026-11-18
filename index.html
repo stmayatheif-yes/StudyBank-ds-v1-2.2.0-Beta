@@ -1813,6 +1813,49 @@ function goToFeedbackMail() {
   <script src="articles.js"></script>
 
   <script src="quiz_random.js"></script>
+
+  <script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc, setDoc }
+    from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBv77zKJ-18WXYdv533TUoiBAyHNda24zk",
+    authDomain: "github-studybank-v1.firebaseapp.com",
+    projectId: "github-studybank-v1",
+    storageBucket: "github-studybank-v1.firebasestorage.app",
+    messagingSenderId: "583900786899",
+    appId: "1:583900786899:web:a67cad692505871cf06426"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // 登入／登出
+  window.loginGoogle = () => signInWithPopup(auth, new GoogleAuthProvider());
+  window.logout = () => signOut(auth);
+
+  // 登入狀態
+  onAuthStateChanged(auth, user => {
+    console.log(user ? "已登入：" + user.email : "未登入");
+  });
+
+  // 存讀刷題紀錄（先用來測試，之後再接到刷題功能）
+  window.saveRecord = async (data) => {
+    const u = auth.currentUser;
+    if (!u) return alert("請先登入");
+    await setDoc(doc(db, "users", u.uid, "data", "chinese"), data);
+  };
+  window.loadRecord = async () => {
+    const u = auth.currentUser;
+    if (!u) return null;
+    const snap = await getDoc(doc(db, "users", u.uid, "data", "chinese"));
+    return snap.exists() ? snap.data() : null;
+  };
+  </script>
   
 </body>
 </html>
