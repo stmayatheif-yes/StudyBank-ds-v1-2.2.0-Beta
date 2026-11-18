@@ -1194,7 +1194,7 @@ function show(){
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px dashed var(--bd);">
       <span style="flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.6; font-size: 0.9rem;">第 ${i+1} / ${list.length} 題｜${q.y} 學測 第${q.n}題${q.a.length>1?"（多選）":""}</span>
       <button onclick="prev()" ${i===0?'disabled':''} style="padding: 4px 10px; font-size: 0.8rem; margin: 0 8px; flex-shrink: 0;">上一題</button>
-      <button onclick="home()" style="padding: 6px 12px; font-size: 0.85rem; margin: 0; flex-shrink: 0;">結束</button>
+      <button onclick="endQuiz()" style="padding: 6px 12px; font-size: 0.85rem; margin: 0; flex-shrink: 0;">結束</button>
     </div>
     <p style="font-size: 1.1rem; font-weight: 500;">${displayText}</p>`+
     q.o.map((t,k)=>{
@@ -1811,6 +1811,8 @@ function goToFeedbackMail() {
 </div>
 
   <script src="articles.js"></script>
+
+  <script src="quiz_random.js"></script>
   
 </body>
 </html>
