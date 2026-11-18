@@ -147,6 +147,22 @@
     return _start(m, v);
   };
 
+  // ---------- 防止題組引文重複顯示 ----------
+  // 若資料裡某題的題幹已含引文，接上引文後同一段會出現兩次；這裡把重複的段落只留第一次
+  const _getQuestionText = getQuestionText;
+  getQuestionText = function (q) {
+    const parts = _getQuestionText(q).split("\n\n");
+    const seen = new Set();
+    const out = [];
+    for (const p of parts) {
+      const k = p.trim();
+      if (k.length > 20 && seen.has(k)) continue;
+      seen.add(k);
+      out.push(p);
+    }
+    return out.join("\n\n");
+  };
+
   window.RandomQuiz = {
     pick(n) { rdSel = n; document.getElementById("rdInput").value = ""; document.getElementById("rdMsg").textContent = ""; setPresetHighlight(); },
     typed() { rdSel = null; setPresetHighlight(); const v = document.getElementById("rdInput").value; if (v !== "") document.getElementById("rdMsg").textContent = ""; },
