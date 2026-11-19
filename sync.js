@@ -113,10 +113,11 @@ async function uploadLocal(snap) {
   });
 }
 
-// ---------- 確認彈窗（網站樣式） ----------
+// ---------- 確認彈窗（網站樣式，放在最上層） ----------
 const confirmEl = document.createElement("div");
 confirmEl.id = "syncConfirm";
 confirmEl.className = "modal-overlay";
+confirmEl.style.zIndex = "2000";
 confirmEl.innerHTML = `
   <div class="modal-content" onclick="event.stopPropagation()" style="width:min(380px,90vw);text-align:center">
     <h3 id="scTitle" style="justify-content:center"></h3>
@@ -126,6 +127,7 @@ confirmEl.innerHTML = `
       <button class="go" id="scCancel" style="background:var(--bd);color:var(--text-color);box-shadow:none">取消</button>
     </div>
   </div>`;
+confirmEl.style.zIndex = "1100";   // 高於同步頁，避免被蓋住
 document.body.appendChild(confirmEl);
 
 function askConfirm(title, text, okText) {
@@ -143,23 +145,9 @@ function askConfirm(title, text, okText) {
   });
 }
 
-// ---------- 雲端同步頁（由側邊欄開啟） ----------
-const pageEl = document.createElement("div");
-pageEl.id = "syncPage";
-pageEl.className = "modal-overlay";
-pageEl.innerHTML = `
-  <div class="modal-content" onclick="event.stopPropagation()" style="width:min(420px,92vw)">
-    <h3>☁️ 雲端同步</h3>
-    <div id="syncBody"></div>
-    <div class="modal-actions" style="margin-top:16px">
-      <button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="SyncPage.close()">關閉</button>
-    </div>
-  </div>`;
-document.body.appendChild(pageEl);
-pageEl.addEventListener("click", e => { if (e.target === pageEl) SyncPage.close(); });
-
-const bodyEl = () => document.getElementById("syncBody");
+// ---------- 雲端同步頁（和設定頁一樣，渲染在主畫面） ----------
 let msgText = "";
+let syncPageOn = false;
 
 function btn(label, onClick, cls) {
   const b = document.createElement("button");
@@ -169,65 +157,97 @@ function btn(label, onClick, cls) {
   b.onclick = onClick;
   return b;
 }
-function renderPage() {
-  const box = bodyEl();
+
+function renderSyncPage() {
+  const box = document.getElementById("app");
   box.innerHTML = "";
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `<div class="header-row"><h2>☁️ 雲端同步</h2></div>`;
+  box.appendChild(card);
+
   const p = document.createElement("p");
   p.style.cssText = "line-height:1.7;margin:4px 0 12px";
   if (!user) {
     p.textContent = "登入 Google 以同步刷題記錄（錯題本、作答紀錄、外觀設定）。未登入時仍可正常使用，紀錄只存在本機。";
-    box.appendChild(p);
-    box.appendChild(btn("登入／註冊（Google）", login));
+    card.appendChild(p);
+    card.appendChild(btn("登入／註冊（Google）", login));
   } else {
     p.textContent = "已登入：" + (user.email || "");
-    box.appendChild(p);
+    card.appendChild(p);
     if (pending) {
       const q = document.createElement("p");
       q.style.cssText = "line-height:1.7;margin:4px 0";
       q.textContent = "雲端已有不同的紀錄，請選擇要以哪一邊為準：";
-      box.appendChild(q);
-      box.appendChild(btn("覆蓋本機（拿雲端資料覆蓋本機）", overwriteLocal));
-      box.appendChild(btn("覆蓋雲端（拿本機資料覆蓋雲端）", overwriteCloud));
+      card.appendChild(q);
+      card.appendChild(btn("覆蓋本機（拿雲端資料覆蓋本機）", overwriteLocal));
+      card.appendChild(btn("覆蓋雲端（拿本機資料覆蓋雲端）", overwriteCloud));
     } else {
-      box.appendChild(btn("同步刷題記錄", manualSync));
+      card.appendChild(btn("同步刷題記錄", manualSync));
     }
-    box.appendChild(btn("登出", logout, "go"));
+    card.appendChild(btn("登出", logout));
   }
   const m = document.createElement("p");
   m.id = "syncMsg";
   m.style.cssText = "min-height:1.4em;margin:12px 0 0;font-size:.9rem;opacity:.8";
   m.textContent = msgText;
-  box.appendChild(m);
+  card.appendChild(m);
 }
 function setMsg(t) { msgText = t || ""; const m = document.getElementById("syncMsg"); if (m) m.textContent = msgText; }
 
-const SyncPage = {
-  open() {
-    // 從側邊欄開啟時先收起側邊欄
-    const sb = document.getElementById("sidebar");
-    if (sb && sb.classList.contains("active") && typeof toggleSidebar === "function") toggleSidebar();
-    renderPage();
-    pageEl.classList.add("active");
-  },
-  close() { pageEl.classList.remove("active"); }
-};
-window.SyncPage = SyncPage;
+function setSyncNav(on) {
+  const item = document.getElementById("navSync");
+  if (item) item.classList.toggle("active", on);
+  badge();
+}
+function badge() {
+  const item = document.getElementById("navSync");
+  if (!item) return;
+  item.textContent = "☁️ 雲端同步" + (pending ? "  ●" : "");
+}
 
-// 側邊欄加入「雲端同步」
+// 開啟雲端同步頁：和設定頁相同的切換方式
+function openSyncPage() {
+  const sb = document.getElementById("sidebar");
+  if (sb && sb.classList.contains("active") && typeof toggleSidebar === "function") toggleSidebar();
+  syncPageOn = true;
+  currentPage = "sync";
+  window.__artActive = false;
+  document.getElementById("navHome").classList.remove("active");
+  document.getElementById("navSettings").classList.remove("active");
+  document.getElementById("subjectNav").style.display = "none";
+  setSyncNav(true);
+  renderSyncPage();
+}
+
+// 離開雲端同步頁：切換到首頁、設定頁或科目時呼叫
+function closeSyncPageState() {
+  if (!syncPageOn) return;
+  syncPageOn = false;
+  setSyncNav(false);
+}
+
+// 側邊欄加入「雲端同步」（放在設定下面）
 const navSettings = document.getElementById("navSettings");
 if (navSettings) {
   const item = document.createElement("div");
   item.className = "sidebar-item";
   item.id = "navSync";
   item.textContent = "☁️ 雲端同步";
-  item.onclick = () => SyncPage.open();
+  item.onclick = openSyncPage;
   navSettings.insertAdjacentElement("afterend", item);
 }
+
+// 其他導覽動作會離開雲端同步頁：包住既有函式
+const _switchPage = switchPage;
+switchPage = function (p) { closeSyncPageState(); return _switchPage(p); };
+const _go = go;
+go = function (k, f) { closeSyncPageState(); return _go(k, f); };
 
 // ---------- 功能 ----------
 async function login() {
   try { await signInWithPopup(auth, new GoogleAuthProvider()); }
-  catch (e) { setMsg("登入失敗：" + e.code); renderPage(); }
+  catch (e) { setMsg("登入失敗：" + e.code); renderSyncPage(); }
 }
 async function logout() {
   const ok = await askConfirm("登出", "確定要登出雲端帳號嗎？登出後仍可在本機刷題，但不會同步。", "登出");
@@ -241,7 +261,7 @@ async function checkAfterLogin() {
   const local = readLocal(localStorage);
   pending = canonical(local) !== canonical({ records: cloudSnap.records, settings: cloudSnap.settings });
   if (!pending) markSynced(local);
-  else SyncPage.open();          // 有出入：自動打開同步頁，讓使用者選擇
+  badge();                       // 有出入：側邊欄顯示提示點，使用者自己點進去選擇
 }
 
 async function overwriteLocal() {
@@ -262,7 +282,7 @@ async function overwriteCloud() {
     pending = false;
     setMsg("已用本機資料覆蓋雲端");
   } catch (e) { setMsg("覆蓋失敗，請稍後再試"); }
-  renderPage();
+  renderSyncPage();
 }
 
 async function manualSync() {
@@ -270,11 +290,11 @@ async function manualSync() {
   const local = readLocal(localStorage);
   if (answeredCount(local) < MIN_MANUAL_QUESTIONS) {
     setMsg("刷題紀錄少於 " + MIN_MANUAL_QUESTIONS + " 題，暫時不能同步");
-    renderPage(); return;
+    renderSyncPage(); return;
   }
   if (now - getLastAt() < COOLDOWN_MS) {
     setMsg("操作太頻繁，請稍後再試");
-    renderPage(); return;
+    renderSyncPage(); return;
   }
   try {
     await uploadLocal(local);
@@ -283,7 +303,7 @@ async function manualSync() {
   } catch (e) {
     setMsg("同步失敗，資料仍保留在本機，請稍後再試");
   }
-  renderPage();
+  renderSyncPage();
 }
 
 // 離開網站：有變動就自動同步（不受 5 題限制）；首次有出入還沒選擇時不動雲端
@@ -301,6 +321,6 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 onAuthStateChanged(auth, async (u) => {
   user = u;
   if (u) await checkAfterLogin();
-  else { pending = false; cloudSnap = null; }
-  if (pageEl.classList.contains("active")) renderPage();
+  else { pending = false; cloudSnap = null; badge(); }
+  if (syncPageOn) renderSyncPage();
 });
