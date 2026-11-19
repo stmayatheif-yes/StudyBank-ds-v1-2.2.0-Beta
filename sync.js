@@ -277,6 +277,16 @@ openSubjectModal = function () {
   return _openSubjectModal();
 };
 
+// 保險：只要同步頁開啟中，「選擇科目」彈窗一出現就立刻關掉（不管是哪一段程式把它打開）
+(function guardSubjectModal() {
+  const sm = document.getElementById("subjectModal");
+  if (!sm) return;
+  new MutationObserver(() => {
+    const syncOpen = window.__syncActive || location.hash === "#sync";
+    if (syncOpen && sm.classList.contains("active")) sm.classList.remove("active");
+  }).observe(sm, { attributes: true, attributeFilter: ["class"] });
+})();
+
 // 網址是 #sync 時直接開啟同步頁。主程式的初始化可能在之後才完成，所以在多個時間點都確認一次
 function ensureSyncShown() {
   if (location.hash !== "#sync") return;
