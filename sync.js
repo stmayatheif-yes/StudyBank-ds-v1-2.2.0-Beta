@@ -65,7 +65,6 @@ function shouldAutoSync(snap, lastJson, lastAt, now) {
   return canonical(snap) !== lastJson && now - lastAt >= COOLDOWN_MS;
 }
 /*PURE-END*/
-
 // ---------- Firebase ----------
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
@@ -89,8 +88,9 @@ const db = getFirestore(app);
 const LAST_AT_KEY = "sync_last_at";
 const LAST_JSON_KEY = "sync_last_json";
 let user = null;
-let pending = false;      // 登入後有出入，等待使用者選擇覆蓋方向
+let pending = false;     // 登入後有出入，等待使用者選擇覆蓋方向
 let cloudSnap = null;
+let msgText = "";
 
 const getLastAt = () => Number(localStorage.getItem(LAST_AT_KEY) || 0);
 const getLastJson = () => localStorage.getItem(LAST_JSON_KEY) || "";
@@ -106,11 +106,7 @@ async function fetchCloud() {
   return snap.exists() ? snap.data() : null;
 }
 async function uploadLocal(snap) {
-  await setDoc(cloudRef(), {
-    records: snap.records,
-    settings: snap.settings,
-    updatedAt: Date.now()
-  });
+  await setDoc(cloudRef(), { records: snap.records, settings: snap.settings, updatedAt: Date.now() });
 }
 
 // ---------- 確認彈窗（網站樣式，放在最上層） ----------
@@ -127,7 +123,6 @@ confirmEl.innerHTML = `
       <button class="go" id="scCancel" style="background:var(--bd);color:var(--text-color);box-shadow:none">取消</button>
     </div>
   </div>`;
-confirmEl.style.zIndex = "1100";   // 高於同步頁，避免被蓋住
 document.body.appendChild(confirmEl);
 
 function askConfirm(title, text, okText) {
@@ -137,7 +132,11 @@ function askConfirm(title, text, okText) {
     const ok = document.getElementById("scOk");
     const cancel = document.getElementById("scCancel");
     ok.textContent = okText;
-    const done = v => { confirmEl.classList.remove("active"); ok.onclick = cancel.onclick = confirmEl.onclick = null; resolve(v); };
+    const done = v => {
+      confirmEl.classList.remove("active");
+      ok.onclick = cancel.onclick = confirmEl.onclick = null;
+      resolve(v);
+    };
     ok.onclick = () => done(true);
     cancel.onclick = () => done(false);
     confirmEl.onclick = e => { if (e.target === confirmEl) done(false); };
@@ -145,104 +144,135 @@ function askConfirm(title, text, okText) {
   });
 }
 
-// ---------- 雲端同步頁（和設定頁一樣，渲染在主畫面） ----------
-let msgText = "";
-let syncPageOn = false;
-
-function btn(label, onClick, cls) {
+// ---------- 同步頁（與設定頁相同方式，渲染在主畫面） ----------
+function setMsg(t) { msgText = t || ""; const m = document.getElementById("syncMsg"); if (m) m.textContent = msgText; }
+function cooldownLeft() {
+  return Math.max(0, Math.ceil((COOLDOWN_MS - (Date.now() - getLastAt())) / 1000));
+}
+function syncBtn(label, onClick, extra) {
   const b = document.createElement("button");
+  b.className = "go";
   b.textContent = label;
-  b.className = cls || "go";
-  b.style.marginTop = "8px";
+  b.style.cssText = "width:100%;margin-top:8px" + (extra || "");
   b.onclick = onClick;
   return b;
 }
+function helper(text) {
+  const s = document.createElement("span");
+  s.className = "helper-text";
+  s.textContent = text;
+  return s;
+}
+function sectionTitle(text) {
+  const p = document.createElement("p");
+  p.style.cssText = "font-weight:bold;font-size:1.1rem;margin:20px 0 0";
+  p.textContent = text;
+  return p;
+}
 
 function renderSyncPage() {
-  const box = document.getElementById("app");
-  box.innerHTML = "";
+  const root = document.getElementById("app");
+  root.innerHTML = "";
   const card = document.createElement("div");
   card.className = "card";
-  card.innerHTML = `<div class="header-row"><h2>☁️ 雲端同步</h2></div>`;
-  box.appendChild(card);
+  const h = document.createElement("div");
+  h.className = "header-row";
+  h.innerHTML = "<h2>☁️ 雲端同步</h2>";
+  card.appendChild(h);
 
-  const p = document.createElement("p");
-  p.style.cssText = "line-height:1.7;margin:4px 0 12px";
+  // 帳號
+  card.appendChild(sectionTitle("🔐 帳號"));
   if (!user) {
-    p.textContent = "登入 Google 以同步刷題記錄（錯題本、作答紀錄、外觀設定）。未登入時仍可正常使用，紀錄只存在本機。";
-    card.appendChild(p);
-    card.appendChild(btn("登入／註冊（Google）", login));
+    card.appendChild(helper("登入 Google 後，刷題紀錄與外觀設定可同步到雲端，換裝置也能繼續使用。未登入時仍可正常刷題，紀錄只存在本機。"));
+    card.appendChild(syncBtn("登入／註冊（Google）", login));
   } else {
-    p.textContent = "已登入：" + (user.email || "");
+    const p = document.createElement("p");
+    p.style.cssText = "margin:8px 0 0;line-height:1.7";
+    p.textContent = "目前帳號：" + (user.email || "");
     card.appendChild(p);
-    if (pending) {
-      const q = document.createElement("p");
-      q.style.cssText = "line-height:1.7;margin:4px 0";
-      q.textContent = "雲端已有不同的紀錄，請選擇要以哪一邊為準：";
-      card.appendChild(q);
-      card.appendChild(btn("覆蓋本機（拿雲端資料覆蓋本機）", overwriteLocal));
-      card.appendChild(btn("覆蓋雲端（拿本機資料覆蓋雲端）", overwriteCloud));
-    } else {
-      card.appendChild(btn("同步刷題記錄", manualSync));
-    }
-    card.appendChild(btn("登出", logout));
+    card.appendChild(syncBtn("登出", logout, ";background:var(--bd);color:var(--text-color);box-shadow:none"));
   }
+
+  // 同步（只顯示目前可以用的按鈕）
+  if (user) {
+    card.appendChild(sectionTitle("🔄 同步"));
+    if (pending) {
+      card.appendChild(helper("雲端與本機的紀錄或設定不同，請選擇以哪一邊為準。按下後此操作無法復原。"));
+      card.appendChild(syncBtn("覆蓋本機（拿雲端資料覆蓋本機）", overwriteLocal));
+      card.appendChild(syncBtn("覆蓋雲端（拿本機資料覆蓋雲端）", overwriteCloud));
+    } else {
+      const n = answeredCount(readLocal(localStorage));
+      const wait = cooldownLeft();
+      if (n < MIN_MANUAL_QUESTIONS) {
+        card.appendChild(helper("目前作答 " + n + " 題，作答滿 " + MIN_MANUAL_QUESTIONS + " 題才能手動同步。離開網站時仍會自動同步。"));
+      } else if (wait > 0) {
+        card.appendChild(helper("剛剛才同步過，" + wait + " 秒後可再次同步。"));
+      } else {
+        card.appendChild(helper("把目前本機的刷題紀錄與外觀設定同步到雲端（會覆蓋雲端的內容）。"));
+        card.appendChild(syncBtn("同步刷題記錄", manualSync));
+      }
+    }
+  }
+
+  // 說明
+  card.appendChild(sectionTitle("ℹ️ 說明"));
+  card.appendChild(helper("同步內容：國文與英文的作答紀錄、錯題本、自定義顏色與目前的外觀設定。不包含深色／淺色模式。"));
+  card.appendChild(helper("離開網站時會自動同步（有變動才同步，不受 5 題限制）。手動同步與離開同步共用 1 分鐘冷卻，避免重複進出造成濫用。"));
+
   const m = document.createElement("p");
   m.id = "syncMsg";
-  m.style.cssText = "min-height:1.4em;margin:12px 0 0;font-size:.9rem;opacity:.8";
+  m.style.cssText = "min-height:1.4em;margin:14px 0 0;font-size:.9rem;opacity:.85";
   m.textContent = msgText;
   card.appendChild(m);
-}
-function setMsg(t) { msgText = t || ""; const m = document.getElementById("syncMsg"); if (m) m.textContent = msgText; }
 
-function setSyncNav(on) {
-  const item = document.getElementById("navSync");
-  if (item) item.classList.toggle("active", on);
-  badge();
-}
-function badge() {
-  const item = document.getElementById("navSync");
-  if (!item) return;
-  item.textContent = "☁️ 雲端同步" + (pending ? "  ●" : "");
+  root.appendChild(card);
+  window.scrollTo(0, 0);
 }
 
-// 開啟雲端同步頁：和設定頁相同的切換方式
+// 開啟同步頁（仿照設定頁：隱藏科目切換列、側邊欄高亮「雲端同步」）
 function openSyncPage() {
   const sb = document.getElementById("sidebar");
   if (sb && sb.classList.contains("active") && typeof toggleSidebar === "function") toggleSidebar();
-  syncPageOn = true;
+  window.__syncActive = true;
   currentPage = "sync";
-  window.__artActive = false;
   document.getElementById("navHome").classList.remove("active");
   document.getElementById("navSettings").classList.remove("active");
+  navSync.classList.add("active");
   document.getElementById("subjectNav").style.display = "none";
-  setSyncNav(true);
+  setHash("sync");
   renderSyncPage();
 }
 
-// 離開雲端同步頁：切換到首頁、設定頁或科目時呼叫
-function closeSyncPageState() {
-  if (!syncPageOn) return;
-  syncPageOn = false;
-  setSyncNav(false);
-}
-
-// 側邊欄加入「雲端同步」（放在設定下面）
+// 側邊欄加入「雲端同步」（放在「設定」下面）
 const navSettings = document.getElementById("navSettings");
-if (navSettings) {
-  const item = document.createElement("div");
-  item.className = "sidebar-item";
-  item.id = "navSync";
-  item.textContent = "☁️ 雲端同步";
-  item.onclick = openSyncPage;
-  navSettings.insertAdjacentElement("afterend", item);
-}
+const navSync = document.createElement("div");
+navSync.className = "sidebar-item";
+navSync.id = "navSync";
+navSync.textContent = "☁️ 雲端同步";
+navSync.onclick = () => switchPage("sync");
+navSettings.insertAdjacentElement("afterend", navSync);
 
-// 其他導覽動作會離開雲端同步頁：包住既有函式
+// 包住既有的 switchPage / go / home，讓同步頁與其他頁面可以互相切換
 const _switchPage = switchPage;
-switchPage = function (p) { closeSyncPageState(); return _switchPage(p); };
+switchPage = function (p) {
+  if (p === "sync") { openSyncPage(); return; }
+  window.__syncActive = false;
+  navSync.classList.remove("active");
+  return _switchPage(p);
+};
 const _go = go;
-go = function (k, f) { closeSyncPageState(); return _go(k, f); };
+go = function (k, f) { window.__syncActive = false; navSync.classList.remove("active"); return _go(k, f); };
+const _home = home;
+home = function () { if (window.__syncActive) return; return _home(); };
+
+// 網址是 #sync 時直接開啟同步頁（等主程式初始化完成後再執行）
+document.addEventListener("DOMContentLoaded", () => {
+  if (location.hash === "#sync") {
+    const sm = document.getElementById("subjectModal");
+    if (sm) sm.classList.remove("active");
+    openSyncPage();
+  }
+});
 
 // ---------- 功能 ----------
 async function login() {
@@ -261,7 +291,7 @@ async function checkAfterLogin() {
   const local = readLocal(localStorage);
   pending = canonical(local) !== canonical({ records: cloudSnap.records, settings: cloudSnap.settings });
   if (!pending) markSynced(local);
-  badge();                       // 有出入：側邊欄顯示提示點，使用者自己點進去選擇
+  else openSyncPage();
 }
 
 async function overwriteLocal() {
@@ -297,6 +327,7 @@ async function manualSync() {
     renderSyncPage(); return;
   }
   try {
+    localStorage.setItem(LAST_AT_KEY, String(now));   // 先記下時間，防止連按
     await uploadLocal(local);
     markSynced(local);
     setMsg("已同步：" + new Date().toLocaleTimeString());
@@ -321,6 +352,6 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 onAuthStateChanged(auth, async (u) => {
   user = u;
   if (u) await checkAfterLogin();
-  else { pending = false; cloudSnap = null; badge(); }
-  if (syncPageOn) renderSyncPage();
+  else { pending = false; cloudSnap = null; }
+  if (window.__syncActive) renderSyncPage();
 });
