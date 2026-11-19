@@ -231,6 +231,9 @@ function renderSyncPage() {
 
 // 開啟同步頁（仿照設定頁：隱藏科目切換列、側邊欄高亮「雲端同步」）
 function openSyncPage() {
+  // 進入同步頁時，一併關掉仍開著的「選擇科目」彈窗（與設定頁相同）
+  const sm = document.getElementById("subjectModal");
+  if (sm) sm.classList.remove("active");
   const sb = document.getElementById("sidebar");
   if (sb && sb.classList.contains("active") && typeof toggleSidebar === "function") toggleSidebar();
   window.__syncActive = true;
