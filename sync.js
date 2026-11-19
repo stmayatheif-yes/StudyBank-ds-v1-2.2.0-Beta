@@ -263,16 +263,27 @@ switchPage = function (p) {
 const _go = go;
 go = function (k, f) { window.__syncActive = false; navSync.classList.remove("active"); return _go(k, f); };
 const _home = home;
-home = function () { if (window.__syncActive) return; return _home(); };
+home = function () {
+  if (window.__syncActive) { renderSyncPage(); return; }   // 同步頁開啟中，任何回到首頁的呼叫都改為保持同步頁
+  return _home();
+};
+// 同步頁開啟中，不讓「選擇科目」彈窗出現
+const _openSubjectModal = openSubjectModal;
+openSubjectModal = function () {
+  if (location.hash === "#sync") { const sm = document.getElementById("subjectModal"); if (sm) sm.classList.remove("active"); return; }
+  return _openSubjectModal();
+};
 
-// 網址是 #sync 時直接開啟同步頁（等主程式初始化完成後再執行）
-document.addEventListener("DOMContentLoaded", () => {
-  if (location.hash === "#sync") {
-    const sm = document.getElementById("subjectModal");
-    if (sm) sm.classList.remove("active");
-    openSyncPage();
-  }
-});
+// 網址是 #sync 時直接開啟同步頁。主程式的初始化可能在之後才完成，所以在多個時間點都確認一次
+function ensureSyncShown() {
+  if (location.hash !== "#sync") return;
+  const sm = document.getElementById("subjectModal");
+  if (sm) sm.classList.remove("active");
+  openSyncPage();
+}
+setTimeout(ensureSyncShown, 0);
+setTimeout(ensureSyncShown, 300);
+window.addEventListener("load", ensureSyncShown);
 
 // ---------- 功能 ----------
 async function login() {
