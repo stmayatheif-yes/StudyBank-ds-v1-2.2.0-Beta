@@ -93,7 +93,6 @@ const SUBJ_STORE = { chinese: "qb_study", english: "qb_study_english" };
 let toolSubj = "chinese";        // 目前工具頁選的科目
 
 const toolRead = (k, fb) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? fb : v; } catch (e) { return fb; } };
-const toolArr = k => { const v = toolRead(k, []); return Array.isArray(v) ? v : []; };
 const toolWrite = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 const fmtDay = ts => { const d = new Date(ts); return d.getFullYear() + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getDate()).padStart(2, "0"); };
 const fmtSecs = n => String(Math.floor(n / 60)).padStart(2, "0") + ":" + String(n % 60).padStart(2, "0");
@@ -120,17 +119,16 @@ function ensureBaseline() {
 }
 // 清掉早期版本留下的無效紀錄（沒有題號的）
 function purgeInvalid() {
-  const arr = toolArr(TOOL_STATS_KEY);
+  const arr = toolRead(TOOL_STATS_KEY, []);
   const clean = arr.filter(a => a && typeof a.id === "string" && /^\d{3}-\d+$/.test(a.id));
   if (clean.length !== arr.length) toolWrite(TOOL_STATS_KEY, clean);
 }
-// 初始化失敗時不影響後面的功能（側邊欄項目仍會建立）
-try { ensureBaseline(); } catch (e) { console.warn("tools: baseline", e); }
-try { purgeInvalid(); } catch (e) { console.warn("tools: purge", e); }
+ensureBaseline();
+purgeInvalid();
 
 function addAttempt(subj, id, ok, mode) {
   if (!localStorage.getItem(firstKeyOf(subj))) toolWrite(firstKeyOf(subj), Date.now());
-  const arr = toolArr(TOOL_STATS_KEY);
+  const arr = toolRead(TOOL_STATS_KEY, []);
   arr.push({ subj, id, ok, mode, ts: Date.now() });
   toolWrite(TOOL_STATS_KEY, arr.slice(-TOOL_MAX_ATTEMPTS));
 }
@@ -145,7 +143,7 @@ function bumpStudy(subj, id, ok) {
 // 舊資料的 attempts 沒有 subj 欄位，視為國文
 const firstKeyOf = subj => subj === "english" ? "tools_first_en" : "tools_first_ts";
 const baseKeyOf = subj => subj === "english" ? "tools_baseline_en" : "tools_baseline";
-const attemptsOf = subj => toolArr(TOOL_STATS_KEY).filter(a => a && a.id && (a.subj || "chinese") === subj);
+const attemptsOf = subj => toolRead(TOOL_STATS_KEY, []).filter(a => a && a.id && (a.subj || "chinese") === subj);
 
 // ---------- 導覽 ----------
 function setToolNav(name) {
@@ -334,7 +332,7 @@ const MockExam = {
     st.result = { correct, total: st.ids.length, auto };
     toolWrite(TOOL_EXAM_KEY, st);
     // 寫入一次測驗紀錄（給學習統計的「最近模擬測驗」）
-    const tests = toolArr(TOOL_TESTS_KEY);
+    const tests = toolRead(TOOL_TESTS_KEY, []);
     const start = st.startAt || Date.now();
     const usedMs = Math.min(Date.now() - start, (st.endAt - start) || Infinity);
     tests.push({ subj, scope: st.scope || "all", correct, total: st.ids.length, auto, secs: Math.round(usedMs / 1000), ts: Date.now() });
@@ -391,7 +389,7 @@ function renderStatsInner() {
   }).join("") || `<p class="meta"><span>還沒有作答紀錄。</span></p>`;
   const wrongRank = Object.keys(s.wrongCount).sort((a, b) => s.wrongCount[b] - s.wrongCount[a]).slice(0, 10)
     .map(id => { const q = all.find(x => x.id === id); return `<button onclick="StatsView.q('${id}')" style="display:flex;width:100%;justify-content:space-between;text-align:left;padding:8px 10px;margin:4px 0;background:var(--bg)"><span>${q ? q.y + " 年 第" + q.n + " 題" : escT(id)}</span><strong>錯 ${s.wrongCount[id]} 次</strong></button>`; }).join("") || `<p class="meta"><span>目前沒有錯題。</span></p>`;
-  const tests = toolArr(TOOL_TESTS_KEY).filter(t => t && (t.subj || "chinese") === subj).slice(-20).reverse();
+  const tests = toolRead(TOOL_TESTS_KEY, []).filter(t => (t.subj || "chinese") === subj).slice(-20).reverse();
   const recent = (statsMode === "practice") ? `<p class="meta"><span>練習沒有測驗紀錄，請切換到「全部」或「模擬」。</span></p>` :
     (tests.map(t => {
       const d = new Date(t.ts).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -490,8 +488,8 @@ function doClearRecords() {
   save({ w: {}, c: 0, t: 0 });                       // 主程式的 save 會存到目前科目
   // 只清除這個科目的統計與測驗紀錄
   const keepSubj = a => (a.subj || "chinese") !== c;
-  toolWrite(TOOL_STATS_KEY, toolArr(TOOL_STATS_KEY).filter(keepSubj));
-  toolWrite(TOOL_TESTS_KEY, toolArr(TOOL_TESTS_KEY).filter(keepSubj));
+  toolWrite(TOOL_STATS_KEY, toolRead(TOOL_STATS_KEY, []).filter(keepSubj));
+  toolWrite(TOOL_TESTS_KEY, toolRead(TOOL_TESTS_KEY, []).filter(keepSubj));
   const ex = toolRead(TOOL_EXAM_KEY, null);
   if (ex && (ex.subj || "chinese") === c) { localStorage.removeItem(TOOL_EXAM_KEY); mockTimer && clearInterval(mockTimer); }
   localStorage.removeItem(firstKeyOf(c));
