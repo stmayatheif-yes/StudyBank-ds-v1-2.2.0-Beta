@@ -8,6 +8,8 @@
 const TOOL_STATS_KEY = "tools_attempts";
 const TOOL_EXAM_KEY = "tools_exam";
 const TOOL_MAX_ATTEMPTS = 2000;
+const TOOL_TESTS_KEY = "tools_tests";
+const TOOL_MAX_TESTS = 200;
 
 // 同題組的題目要一起出：回傳 { 題號範圍: [a,b] }，找不到回傳 null
 function groupRangeOf(all, q) {
@@ -223,7 +225,7 @@ const MockExam = {
     }
     mockForm = { year: document.getElementById("mkYear").value, count: N, minutes: M };
     const ids = pickUnitsN(buildUnits(chineseQ(), pool), N, Math.random).map(q => qidOf(q));
-    const st = { ids, idx: 0, ans: {}, endAt: Date.now() + M * 60000, done: false };
+    const st = { ids, idx: 0, ans: {}, scope: document.getElementById("mkYear").value, startAt: Date.now(), endAt: Date.now() + M * 60000, done: false };
     toolWrite(TOOL_EXAM_KEY, st);
     this.run(st);
   },
@@ -304,6 +306,10 @@ const MockExam = {
     });
     st.result = { correct, total: st.ids.length, auto };
     toolWrite(TOOL_EXAM_KEY, st);
+    const tests = toolRead(TOOL_TESTS_KEY, []);
+    const usedMs = Math.min(Date.now() - (st.startAt || Date.now()), (st.endAt - (st.startAt || Date.now())) || Infinity);
+    tests.push({ scope: st.scope || "all", correct, total: st.ids.length, auto, secs: Math.round(usedMs / 1000), ts: Date.now() });
+    toolWrite(TOOL_TESTS_KEY, tests.slice(-TOOL_MAX_TESTS));
     const pct = st.ids.length ? Math.round(correct / st.ids.length * 100) : 0;
     document.getElementById("app").innerHTML = `
       <div class="card">
@@ -354,10 +360,14 @@ function renderStatsInner() {
   }).join("") || `<p class="meta"><span>還沒有作答紀錄。</span></p>`;
   const wrongRank = Object.keys(s.wrongCount).sort((a, b) => s.wrongCount[b] - s.wrongCount[a]).slice(0, 10)
     .map(id => { const q = chineseQ().find(x => x.id === id); return `<button onclick="StatsView.q('${id}')" style="display:flex;width:100%;justify-content:space-between;text-align:left;padding:8px 10px;margin:4px 0;background:var(--bg)"><span>${q ? q.y + " 年 第" + q.n + " 題" : escT(id)}</span><strong>錯 ${s.wrongCount[id]} 次</strong></button>`; }).join("") || `<p class="meta"><span>目前沒有錯題。</span></p>`;
-  const recent = attempts.filter(a => a && a.id).slice(-20).reverse().map(a => {
-    const d = new Date(a.ts).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-    return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.9rem"><span>${a.id}　${(a.mode || "practice") === "mock" ? "模擬" : "練習"}</span><span>${a.ok ? "✔" : "✘"}　${d}</span></div>`;
-  }).join("") || `<p class="meta"><span>還沒有作答紀錄。</span></p>`;
+  const tests = toolRead(TOOL_TESTS_KEY, []).slice(-20).reverse();
+  const fmtSecs = n => String(Math.floor(n / 60)).padStart(2, "0") + ":" + String(n % 60).padStart(2, "0");
+  const recent = (statsMode === "practice") ? `<p class="meta"><span>練習沒有測驗紀錄，請切換到「全部」或「模擬」。</span></p>` :
+    (tests.map(t => {
+      const d = new Date(t.ts).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      const label = t.scope === "all" || !t.scope ? "全範圍" : t.scope + " 年";
+      return `<div style="padding:8px 0;border-bottom:1px dashed var(--bd)"><div style="display:flex;justify-content:space-between"><span>${label}　模擬</span><strong>${t.correct}/${t.total}</strong></div><div class="meta" style="margin:2px 0 0;font-size:.85rem">${d}　用時 ${fmtSecs(t.secs || 0)}${t.auto ? "（時間到自動交卷）" : ""}</div></div>`;
+    }).join("") || `<p class="meta"><span>還沒有模擬測驗紀錄。</span></p>`);
   const tab = (k, label) => `<button class="go" style="width:auto;padding:6px 12px;margin:0 6px 8px 0;${statsMode === k ? "" : "background:var(--bd);color:var(--text-color);box-shadow:none"}" onclick="StatsView.mode('${k}')">${label}</button>`;
   document.getElementById("app").innerHTML = `
     <div class="card">
@@ -371,7 +381,7 @@ function renderStatsInner() {
       </div>
       <p style="font-weight:bold;margin:16px 0 4px">各年度正確率</p>${yearRows}
       <p style="font-weight:bold;margin:20px 0 4px">最常答錯（前 10 題）</p>${wrongRank}
-      <p style="font-weight:bold;margin:20px 0 4px">最近 20 次作答</p>${recent}
+      <p style="font-weight:bold;margin:20px 0 4px">最近模擬測驗（最近 20 次）</p>${recent}
     </div>`;
   window.scrollTo(0, 0);
 }
@@ -434,15 +444,7 @@ function askClearRecords() {
   if (cur !== "chinese" && cur !== "english") return;
   const name = cur === "chinese" ? "國文" : "英文";
   const extra = cur === "chinese" ? "模擬測驗進度、學習統計資料、" : "";
-  const m = toolModal("clearConfirm");
-  m.innerHTML = `<div class="modal-content" onclick="event.stopPropagation()" style="width:min(380px,90vw);text-align:center">
-    <h3 style="justify-content:center">是否確認刪除${name}刷題記錄？</h3>
-    <p style="text-align:left;line-height:1.7;margin:8px 0 18px;white-space:pre-wrap">包括：${extra}${name}卡片刷題內容\n\n刪除後無法復原。</p>
-    <div class="modal-actions" style="margin-top:0">
-      <button class="go" style="background:var(--no)" onclick="doClearRecords()">是，確認刪除</button>
-      <button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="document.getElementById('clearConfirm').classList.remove('active')">否，我再想想</button>
-    </div></div>`;
-  m.classList.add("active");
+  if (confirm(`是否確認刪除${name}刷題記錄？\n包括：${extra}${name}卡片刷題內容\n\n刪除後無法復原。`)) doClearRecords();
 }
 function doClearRecords() {
   const c = cur;
@@ -450,11 +452,11 @@ function doClearRecords() {
   if (c === "chinese") {
     localStorage.removeItem(TOOL_STATS_KEY);
     localStorage.removeItem(TOOL_EXAM_KEY);
+    localStorage.removeItem(TOOL_TESTS_KEY);
     localStorage.removeItem("tools_first_ts");
     toolWrite("tools_baseline", { t: 0, c: 0, w: [] });
     mockTimer && clearInterval(mockTimer);
   }
-  document.getElementById("clearConfirm").classList.remove("active");
   home();
 }
 
