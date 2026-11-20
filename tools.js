@@ -1,5 +1,5 @@
 /* ==========================================
-   第一階段工具：答案表、模擬測驗、學習統計
+   刷題工具：答案表、模擬測驗、學習統計（國文／英文）
    使用方式：放在 GitHub 專案根目錄，並在 index.html 的 </body> 前、
    sync.js 之前加上：<script src="tools.js"></script>
    ========================================== */
@@ -84,13 +84,30 @@ function summarize(attempts, mode) {
   return { total, correct, byYear, wrongCount };
 }
 /*PURE-END*/
-
-// ---------- 讀寫 ----------
+// ---------- 儲存 ----------
 const TOOL_PAGES = { answers: "答案表", mock: "模擬測驗", stats: "學習統計" };
+const SUBJ_LABEL = { chinese: "國文", english: "英文" };
+const SUBJ_STORE = { chinese: "qb_study", english: "qb_study_english" };
+let toolSubj = "chinese";        // 目前工具頁選的科目
+
 const toolRead = (k, fb) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? fb : v; } catch (e) { return fb; } };
 const toolWrite = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const fmtDay = ts => { const d = new Date(ts); return d.getFullYear() + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getDate()).padStart(2, "0"); };
+const fmtSecs = n => String(Math.floor(n / 60)).padStart(2, "0") + ":" + String(n % 60).padStart(2, "0");
+const escT = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-// 舊資料基準點：第一次載入新版時，把當時卡片上的數字存起來，之後的練習不影響它
+// 題目 id 統一為「年-題號」，並快取（主程式載入的題庫沒有 id 欄位）
+const qidOf = q => q.id || (q.y + "-" + q.n);
+const _qCache = {};
+function subjQ(s) {
+  s = s || toolSubj;
+  const src = (typeof DATA !== "undefined" && DATA[s]) ? DATA[s] : [];
+  if (!_qCache[s] || _qCache[s].src !== src) _qCache[s] = { src, arr: src.map(q => q.id ? q : Object.assign({}, q, { id: qidOf(q) })) };
+  return _qCache[s].arr;
+}
+const subjYears = s => [...new Set(subjQ(s).map(q => String(q.y)))].sort();
+
+// 舊資料基準點（只針對國文）：第一次載入新版時，把當時卡片上的數字存起來
 function ensureBaseline() {
   if (localStorage.getItem("tools_baseline")) return;
   const s = toolRead("qb_study", { w: {}, c: 0, t: 0 });
@@ -104,31 +121,23 @@ function purgeInvalid() {
 }
 ensureBaseline();
 purgeInvalid();
-const fmtDay = ts => { const d = new Date(ts); return d.getFullYear() + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getDate()).padStart(2, "0"); };
-let _qSrc = null, _qCache = [];
-const qidOf = q => q.id || (q.y + "-" + q.n);
-// 題目 id 統一為「年-題號」，並快取（主程式載入的題庫沒有 id 欄位）
-const chineseQ = () => {
-  const src = (typeof DATA !== "undefined" && DATA.chinese) ? DATA.chinese : [];
-  if (src !== _qSrc) { _qSrc = src; _qCache = src.map(q => q.id ? q : Object.assign({}, q, { id: qidOf(q) })); }
-  return _qCache;
-};
-const toolYears = () => [...new Set(chineseQ().map(q => q.y))].sort((a, b) => a - b);
 
-function addAttempt(id, ok, mode) {
+function addAttempt(subj, id, ok, mode) {
   if (!localStorage.getItem("tools_first_ts")) toolWrite("tools_first_ts", Date.now());
   const arr = toolRead(TOOL_STATS_KEY, []);
-  arr.push({ id, ok, mode, ts: Date.now() });
+  arr.push({ subj, id, ok, mode, ts: Date.now() });
   toolWrite(TOOL_STATS_KEY, arr.slice(-TOOL_MAX_ATTEMPTS));
 }
-
-// 模擬測驗與練習共用的錯題本（qb_study）
-function bumpStudy(id, ok) {
-  const s = toolRead("qb_study", { w: {}, c: 0, t: 0 });
+// 模擬測驗與練習共用各科的錯題本（卡片上的紀錄）
+function bumpStudy(subj, id, ok) {
+  const key = SUBJ_STORE[subj];
+  const s = toolRead(key, { w: {}, c: 0, t: 0 });
   s.t = (s.t || 0) + 1;
   if (ok) { s.c = (s.c || 0) + 1; delete s.w[id]; } else { s.w[id] = 1; }
-  toolWrite("qb_study", s);
+  toolWrite(key, s);
 }
+// 舊資料的 attempts 沒有 subj 欄位，視為國文
+const attemptsOf = subj => toolRead(TOOL_STATS_KEY, []).filter(a => a && a.id && (a.subj || "chinese") === subj);
 
 // ---------- 導覽 ----------
 function setToolNav(name) {
@@ -146,7 +155,7 @@ async function openTool(name) {
   setToolNav(name);
   history.replaceState(null, "", "#tool-" + name);
   document.getElementById("app").innerHTML = `<div class="card"><p class="meta"><span>載入中…</span></p></div>`;
-  if (typeof loadSubject === "function" && !LOADED.chinese) await loadSubject("chinese");
+  if (typeof loadSubject === "function") { await loadSubject("chinese"); await loadSubject("english"); }
   if (window.__extraPage === name) renderTool(name);
 }
 function renderTool(name) {
@@ -154,25 +163,36 @@ function renderTool(name) {
   if (name === "mock") return renderMockEntry();
   if (name === "stats") return renderStats();
 }
+// 科目切換列（工具頁共用）
+function subjTabs(onclickFn) {
+  return ["chinese", "english"].map(s => `<button class="go" style="width:auto;padding:6px 14px;margin:0 6px 8px 0;${toolSubj === s ? "" : "background:var(--bd);color:var(--text-color);box-shadow:none"}" onclick="${onclickFn}('${s}')">${SUBJ_LABEL[s]}</button>`).join("");
+}
+function pillBtn(active, label, onclick) {
+  return `<button class="go" style="width:auto;padding:6px 12px;margin:0 6px 8px 0;${active ? "" : "background:var(--bd);color:var(--text-color);box-shadow:none"}" onclick="${onclick}">${label}</button>`;
+}
 
 // ---------- 答案表 ----------
 let answerYear = "all";
 function renderAnswers() {
-  const years = toolYears();
-  const data = chineseQ().filter(q => answerYear === "all" || String(q.y) === String(answerYear))
-                         .sort((a, b) => (a.y - b.y) || (+a.n - +b.n));
-  const btns = ["all", ...years].map(y => `<button class="go" style="width:auto;padding:6px 12px;margin:0 6px 8px 0;${String(answerYear) === String(y) ? "" : "background:var(--bd);color:var(--text-color);box-shadow:none"}" onclick="AnswerTable.year('${y}')">${y === "all" ? "全部" : y + " 年"}</button>`).join("");
+  const years = subjYears();
+  const data = subjQ().filter(q => answerYear === "all" || String(q.y) === String(answerYear))
+                      .sort((a, b) => (a.y - b.y) || (+a.n - +b.n));
+  const btns = ["all", ...years].map(y => pillBtn(String(answerYear) === String(y), y === "all" ? "全部" : y + " 年", `AnswerTable.year('${y}')`)).join("");
   const cells = data.map(q => `<div style="display:flex;justify-content:space-between;padding:6px 10px;border:1px solid var(--bd);border-radius:8px"><span>${answerYear === "all" ? q.y + "‧" : ""}${q.n}</span><strong>${q.a}</strong></div>`).join("");
   document.getElementById("app").innerHTML = `
     <div class="card">
       <div class="header-row"><h2>📋 答案表</h2></div>
+      <div>${subjTabs("AnswerTable.subj")}</div>
       <div>${btns}</div>
-      <span class="helper-text">多選題以字母合併顯示，例如 CD。作答後的對錯請以刷題紀錄為準。</span>
+      <span class="helper-text">多選題以字母合併顯示，例如 CD。</span>
       ${data.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:12px">${cells}</div>` : `<p class="meta"><span>目前沒有題目資料。</span></p>`}
     </div>`;
   window.scrollTo(0, 0);
 }
-const AnswerTable = { year(y) { answerYear = y; renderAnswers(); } };
+const AnswerTable = {
+  year(y) { answerYear = y; renderAnswers(); },
+  subj(s) { toolSubj = s; answerYear = "all"; renderAnswers(); }
+};
 window.AnswerTable = AnswerTable;
 
 // ---------- 模擬測驗 ----------
@@ -181,16 +201,17 @@ let mockTimer = null;
 
 function renderMockEntry() {
   const saved = toolRead(TOOL_EXAM_KEY, null);
-  const years = toolYears();
   const resume = saved && !saved.done
-    ? `<div class="card" style="margin-bottom:16px"><p style="margin:0 0 8px">有未完成的模擬測驗（${saved.ids.length} 題）。</p>
+    ? `<div class="card" style="margin-bottom:16px"><p style="margin:0 0 8px">有未完成的${SUBJ_LABEL[saved.subj || "chinese"]}模擬測驗（${saved.ids.length} 題）。</p>
        <button class="go" onclick="MockExam.resume()">繼續作答</button>
        <button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="MockExam.discard()">放棄並重新設定</button></div>` : "";
+  const years = subjYears();
   const yearOpts = `<option value="all">全部年度（混合）</option>` + years.map(y => `<option value="${y}" ${String(mockForm.year) === String(y) ? "selected" : ""}>${y} 年</option>`).join("");
   document.getElementById("app").innerHTML = `
     ${resume}
     <div class="card">
       <div class="header-row"><h2>📝 模擬測驗</h2></div>
+      <div>${subjTabs("MockExam.subj")}</div>
       <p style="margin:0 0 6px;font-weight:bold">範圍</p>
       <select id="mkYear" style="width:100%">${yearOpts}</select>
       <p style="margin:14px 0 6px;font-weight:bold">題數</p>
@@ -204,14 +225,10 @@ function renderMockEntry() {
   window.scrollTo(0, 0);
 }
 
-function examPool() {
-  const y = document.getElementById("mkYear").value;
-  return chineseQ().filter(q => y === "all" || String(q.y) === String(y));
-}
-
 const MockExam = {
+  subj(s) { toolSubj = s; mockForm.year = "all"; renderMockEntry(); },
   start() {
-    const pool = examPool();
+    const pool = subjQ().filter(q => { const y = document.getElementById("mkYear").value; return y === "all" || String(q.y) === String(y); });
     let N = parseInt(document.getElementById("mkCount").value, 10);
     let M = parseInt(document.getElementById("mkMin").value, 10);
     const msg = document.getElementById("mkMsg");
@@ -224,12 +241,13 @@ const MockExam = {
       return;
     }
     mockForm = { year: document.getElementById("mkYear").value, count: N, minutes: M };
-    const ids = pickUnitsN(buildUnits(chineseQ(), pool), N, Math.random).map(q => qidOf(q));
-    const st = { ids, idx: 0, ans: {}, scope: document.getElementById("mkYear").value, startAt: Date.now(), endAt: Date.now() + M * 60000, done: false };
+    const ids = pickUnitsN(buildUnits(subjQ(), pool), N, Math.random).map(q => qidOf(q));
+    const now = Date.now();
+    const st = { subj: toolSubj, ids, idx: 0, ans: {}, scope: mockForm.year, startAt: now, endAt: now + M * 60000, done: false };
     toolWrite(TOOL_EXAM_KEY, st);
     this.run(st);
   },
-  resume() { const st = toolRead(TOOL_EXAM_KEY, null); if (st && !st.done) this.run(st); },
+  resume() { const st = toolRead(TOOL_EXAM_KEY, null); if (st && !st.done) { toolSubj = st.subj || "chinese"; this.run(st); } },
   discard() { localStorage.removeItem(TOOL_EXAM_KEY); renderMockEntry(); },
   run(st) {
     clearInterval(mockTimer);
@@ -242,10 +260,10 @@ const MockExam = {
     const st = this.st; if (!st || st.done) return;
     const left = Math.max(0, st.endAt - Date.now());
     const el = document.getElementById("mkTimer");
-    if (el) el.textContent = String(Math.floor(left / 60000)).padStart(2, "0") + ":" + String(Math.floor(left / 1000) % 60).padStart(2, "0");
+    if (el) el.textContent = fmtSecs(Math.floor(left / 1000));
     if (left <= 0) this.submit(true);
   },
-  q() { return chineseQ().find(x => x.id === this.st.ids[this.st.idx]); },
+  q() { return subjQ(this.st.subj).find(x => x.id === this.st.ids[this.st.idx]); },
   pick(letter) {
     const q = this.q(), st = this.st;
     if (q.a.length > 1) {
@@ -262,17 +280,16 @@ const MockExam = {
     const st = this.st, q = this.q(), letters = "ABCDEFGHIJ";
     const picks = st.ans[q.id] || [];
     const grid = st.ids.map((id, i) => `<button onclick="MockExam.go(${i})" style="padding:4px 0;margin:0;${i === st.idx ? "border-color:var(--ac);" : ""}${(st.ans[id] || []).length ? "background:color-mix(in srgb,var(--ac) 20%,var(--card));" : ""}">${i + 1}</button>`).join("");
-    const body = groupPassageText(q);
     document.getElementById("app").innerHTML = `
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px dashed var(--bd)">
-          <span>第 ${st.idx + 1} / ${st.ids.length} 題</span>
+          <span>${SUBJ_LABEL[st.subj || "chinese"]}　第 ${st.idx + 1} / ${st.ids.length} 題</span>
           <span id="mkTimer" style="font-weight:bold;color:var(--ac)"></span>
           <button onclick="MockExam.confirmSubmit()" style="padding:6px 12px;margin:0">交卷</button>
         </div>
-        <p style="white-space:pre-wrap;font-size:1.05rem;line-height:1.8">${escT(body)}</p>
+        <p style="white-space:pre-wrap;font-size:1.05rem;line-height:1.8">${escT(groupPassageText(q, st.subj))}</p>
         ${q.a.length > 1 ? `<span class="helper-text">多選題，可選多個。</span>` : ""}
-        ${q.o.map((o, k) => `<button class="opt ${picks.includes(letters[k]) ? "sel" : ""}" onclick="MockExam.pick('${letters[k]}')">${o}</button>`).join("")}
+        ${q.o.map((o, k) => `<button class="opt ${picks.includes(letters[k]) ? "sel" : ""}" onclick="MockExam.pick('${letters[k]}')">${escT(o)}</button>`).join("")}
         <div style="display:flex;gap:8px;margin-top:12px">
           <button style="flex:1;margin:0" ${st.idx === 0 ? "disabled" : ""} onclick="MockExam.go(${st.idx - 1})">上一題</button>
           <button style="flex:1;margin:0" ${st.idx === st.ids.length - 1 ? "disabled" : ""} onclick="MockExam.go(${st.idx + 1})">下一題</button>
@@ -280,7 +297,7 @@ const MockExam = {
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:6px;margin-top:14px">${grid}</div>
       </div>`;
     const el = document.getElementById("mkTimer");
-    if (el) { const left = Math.max(0, st.endAt - Date.now()); el.textContent = String(Math.floor(left / 60000)).padStart(2, "0") + ":" + String(Math.floor(left / 1000) % 60).padStart(2, "0"); }
+    if (el) { const left = Math.max(0, st.endAt - Date.now()); el.textContent = fmtSecs(Math.floor(left / 1000)); }
   },
   confirmSubmit() {
     const unanswered = this.st.ids.filter(id => !(this.st.ans[id] || []).length).length;
@@ -291,13 +308,15 @@ const MockExam = {
     const st = this.st; if (!st || st.done) return;
     clearInterval(mockTimer);
     st.done = true;
+    const subj = st.subj || "chinese";
+    const all = subjQ(subj);
     let correct = 0; const rows = [];
     st.ids.forEach((id, i) => {
-      const q = chineseQ().find(x => x.id === id);
+      const q = all.find(x => x.id === id);
       const picks = st.ans[id] || [];
       const r = gradeChoice(q, picks);
       if (r === "correct") correct++;
-      if (r !== "skip") { addAttempt(id, r === "correct", "mock"); bumpStudy(id, r === "correct"); }
+      if (r !== "skip") { addAttempt(subj, id, r === "correct", "mock"); bumpStudy(subj, id, r === "correct"); }
       const cls = r === "correct" ? "color:var(--ok)" : r === "skip" ? "opacity:.6" : "color:var(--no)";
       const txt = r === "correct" ? "✔ 答對" : r === "skip" ? "未作答" : "✘ 答錯";
       rows.push(`<details style="margin-bottom:8px"><summary>${i + 1}. <span style="${cls}">${txt}</span>　${escT(q.q.replace(/【\d+~\d+題為題組題】\n*/g, "").slice(0, 30))}</summary>
@@ -306,9 +325,11 @@ const MockExam = {
     });
     st.result = { correct, total: st.ids.length, auto };
     toolWrite(TOOL_EXAM_KEY, st);
+    // 寫入一次測驗紀錄（給學習統計的「最近模擬測驗」）
     const tests = toolRead(TOOL_TESTS_KEY, []);
-    const usedMs = Math.min(Date.now() - (st.startAt || Date.now()), (st.endAt - (st.startAt || Date.now())) || Infinity);
-    tests.push({ scope: st.scope || "all", correct, total: st.ids.length, auto, secs: Math.round(usedMs / 1000), ts: Date.now() });
+    const start = st.startAt || Date.now();
+    const usedMs = Math.min(Date.now() - start, (st.endAt - start) || Infinity);
+    tests.push({ subj, scope: st.scope || "all", correct, total: st.ids.length, auto, secs: Math.round(usedMs / 1000), ts: Date.now() });
     toolWrite(TOOL_TESTS_KEY, tests.slice(-TOOL_MAX_TESTS));
     const pct = st.ids.length ? Math.round(correct / st.ids.length * 100) : 0;
     document.getElementById("app").innerHTML = `
@@ -327,19 +348,19 @@ const MockExam = {
 };
 window.MockExam = MockExam;
 
-// 題組引文（與刷題頁一樣：附屬題前面接上組首引文）
-function groupPassageText(q) {
-  const all = chineseQ();
+// 題組引文（與刷題頁一樣：附屬題前面接上組首引文；組首題不顯示標籤）
+function groupPassageText(q, subj) {
+  const all = subjQ(subj || toolSubj);
   const r = groupRangeOf(all, q);
   if (!r) return q.q;
+  const clean = t => t.replace(/【\d+~\d+題為題組題】\n*/g, "");
+  if (+q.n === r[0]) return clean(q.q);
   const start = all.find(x => x.y === q.y && +x.n === r[0]);
-  if (!start) return q.q.replace(/【\d+~\d+題為題組題】\n*/g, "");
-  if (+q.n === r[0]) return q.q.replace(/【\d+~\d+題為題組題】\n*/g, "");
-  const raw = start.q.replace(/【\d+~\d+題為題組題】\n*/g, "");
+  if (!start) return clean(q.q);
+  const raw = clean(start.q);
   const br = raw.lastIndexOf("\n\n");
-  return br !== -1 ? raw.substring(0, br) + "\n\n" + q.q : q.q;
+  return br !== -1 ? raw.substring(0, br) + "\n\n" + clean(q.q) : clean(q.q);
 }
-function escT(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
 // ---------- 學習統計 ----------
 let statsMode = "all";
@@ -348,33 +369,34 @@ function renderStats() {
   catch (e) { document.getElementById("app").innerHTML = `<div class="card"><h2>📊 學習統計</h2><p>統計載入失敗：${escT(e.message)}</p></div>`; }
 }
 function renderStatsInner() {
-  const attempts = toolRead(TOOL_STATS_KEY, []).filter(a => a && a.id);
-  const firstTs = toolRead("tools_first_ts", null);
-  const firstDay = firstTs ? fmtDay(firstTs) : "（尚未開始）";
+  const subj = toolSubj;
+  const attempts = attemptsOf(subj);
   const s = summarize(attempts, statsMode);
   const pct = s.total ? Math.round(s.correct / s.total * 100) : 0;
+  const firstTs = toolRead("tools_first_ts", null);
+  const firstDay = firstTs ? fmtDay(firstTs) : "（尚未開始）";
+  const all = subjQ(subj);
   const yearRows = Object.keys(s.byYear).sort().map(y => {
     const v = s.byYear[y], p = Math.round(v.c / v.t * 100);
     return `<div style="margin:8px 0"><div style="display:flex;justify-content:space-between;font-size:.9rem"><span>${y} 年</span><span>${p}%（${v.c}/${v.t}）</span></div>
       <div style="height:10px;background:var(--bd);border-radius:6px;overflow:hidden"><div style="height:100%;width:${p}%;background:var(--ac)"></div></div></div>`;
   }).join("") || `<p class="meta"><span>還沒有作答紀錄。</span></p>`;
   const wrongRank = Object.keys(s.wrongCount).sort((a, b) => s.wrongCount[b] - s.wrongCount[a]).slice(0, 10)
-    .map(id => { const q = chineseQ().find(x => x.id === id); return `<button onclick="StatsView.q('${id}')" style="display:flex;width:100%;justify-content:space-between;text-align:left;padding:8px 10px;margin:4px 0;background:var(--bg)"><span>${q ? q.y + " 年 第" + q.n + " 題" : escT(id)}</span><strong>錯 ${s.wrongCount[id]} 次</strong></button>`; }).join("") || `<p class="meta"><span>目前沒有錯題。</span></p>`;
-  const tests = toolRead(TOOL_TESTS_KEY, []).slice(-20).reverse();
-  const fmtSecs = n => String(Math.floor(n / 60)).padStart(2, "0") + ":" + String(n % 60).padStart(2, "0");
+    .map(id => { const q = all.find(x => x.id === id); return `<button onclick="StatsView.q('${id}')" style="display:flex;width:100%;justify-content:space-between;text-align:left;padding:8px 10px;margin:4px 0;background:var(--bg)"><span>${q ? q.y + " 年 第" + q.n + " 題" : escT(id)}</span><strong>錯 ${s.wrongCount[id]} 次</strong></button>`; }).join("") || `<p class="meta"><span>目前沒有錯題。</span></p>`;
+  const tests = toolRead(TOOL_TESTS_KEY, []).filter(t => (t.subj || "chinese") === subj).slice(-20).reverse();
   const recent = (statsMode === "practice") ? `<p class="meta"><span>練習沒有測驗紀錄，請切換到「全部」或「模擬」。</span></p>` :
     (tests.map(t => {
       const d = new Date(t.ts).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-      const label = t.scope === "all" || !t.scope ? "全範圍" : t.scope + " 年";
+      const label = !t.scope || t.scope === "all" ? "全範圍" : t.scope + " 年";
       return `<div style="padding:8px 0;border-bottom:1px dashed var(--bd)"><div style="display:flex;justify-content:space-between"><span>${label}　模擬</span><strong>${t.correct}/${t.total}</strong></div><div class="meta" style="margin:2px 0 0;font-size:.85rem">${d}　用時 ${fmtSecs(t.secs || 0)}${t.auto ? "（時間到自動交卷）" : ""}</div></div>`;
     }).join("") || `<p class="meta"><span>還沒有模擬測驗紀錄。</span></p>`);
-  const tab = (k, label) => `<button class="go" style="width:auto;padding:6px 12px;margin:0 6px 8px 0;${statsMode === k ? "" : "background:var(--bd);color:var(--text-color);box-shadow:none"}" onclick="StatsView.mode('${k}')">${label}</button>`;
   document.getElementById("app").innerHTML = `
     <div class="card">
       <div class="header-row"><h2>📊 學習統計</h2></div>
-      <div>${tab("all", "全部")}${tab("practice", "練習")}${tab("mock", "模擬")}</div>
+      <div>${subjTabs("StatsView.subj")}</div>
+      <div>${pillBtn(statsMode === "all", "全部", "StatsView.mode('all')")}${pillBtn(statsMode === "practice", "練習", "StatsView.mode('practice')")}${pillBtn(statsMode === "mock", "模擬", "StatsView.mode('mock')")}</div>
       <span class="helper-text">統計從 ${firstDay} 開始記錄，之前的練習請看各科卡片。多選題需完全答對才算答對。</span>
-      <button onclick="StatsView.old()" style="margin:4px 0 8px;padding:6px 12px;font-size:.85rem">舊資料</button>
+      ${subj === "chinese" ? `<button onclick="StatsView.old()" style="margin:4px 0 8px;padding:6px 12px;font-size:.85rem">舊資料</button>` : ""}
       <div style="display:flex;gap:10px;margin:12px 0">
         <div class="card" style="flex:1;margin:0;text-align:center"><div class="meta" style="margin:0">作答題數</div><strong style="font-size:1.4rem">${s.total}</strong></div>
         <div class="card" style="flex:1;margin:0;text-align:center"><div class="meta" style="margin:0">正確率</div><strong style="font-size:1.4rem">${pct}%</strong></div>
@@ -387,8 +409,9 @@ function renderStatsInner() {
 }
 const StatsView = {
   mode(k) { statsMode = k; renderStats(); },
+  subj(s) { toolSubj = s; renderStats(); },
   old() { openOldModal(); },
-  q(id) { openQModal(id); }
+  q(id) { openQModal(id, toolSubj); }
 };
 window.StatsView = StatsView;
 
@@ -405,16 +428,16 @@ function toolModal(id) {
   }
   return m;
 }
-function openQModal(id) {
-  const q = chineseQ().find(x => qidOf(x) === id);
+function openQModal(id, subj) {
+  const q = subjQ(subj).find(x => qidOf(x) === id);
   const m = toolModal("statQModal");
   const body = q ? `
-    <p style="white-space:pre-wrap;line-height:1.7;margin:0 0 12px">${escT(groupPassageText(q))}</p>
+    <p style="white-space:pre-wrap;line-height:1.7;margin:0 0 12px">${escT(groupPassageText(q, subj))}</p>
     ${q.o.map((o, k) => `<p style="margin:4px 0;${q.a.includes("ABCDEFGHIJ"[k]) ? "color:var(--ok);font-weight:bold" : ""}">${escT(o)}</p>`).join("")}
     <p style="margin:12px 0 4px">正確答案：<strong>${q.a}</strong></p>
     <div class="analysis-body" style="white-space:pre-wrap">${escT(q.e || "暫無解析")}</div>` : `<p>找不到這一題。</p>`;
   m.innerHTML = `<div class="modal-content" onclick="event.stopPropagation()" style="max-height:80vh;overflow-y:auto;width:min(520px,92vw)">
-    <h3>${q ? q.y + " 年 第 " + q.n + " 題" : "題目"}</h3>${body}
+    <h3>${q ? SUBJ_LABEL[subj] + "　" + q.y + " 年 第 " + q.n + " 題" : "題目"}</h3>${body}
     <div class="modal-actions"><button class="go" onclick="document.getElementById('statQModal').classList.remove('active')">關閉</button></div></div>`;
   m.classList.add("active");
 }
@@ -423,14 +446,13 @@ function openOldModal() {
   const cur = toolRead("qb_study", { w: {}, c: 0, t: 0 });
   const still = (b.w || []).filter(id => cur.w && cur.w[id]);
   const pct = b.t ? Math.round(b.c / b.t * 100) : 0;
-  const years = ["110", "111", "112", "113", "114", "115"];
-  const rows = years.map(y => {
+  const rows = ["110", "111", "112", "113", "114", "115"].map(y => {
     const nums = still.filter(id => id.split("-")[0] === y).map(id => id.split("-")[1]).sort((a, b) => a - b);
     return `<tr><td style="padding:6px 10px;border:1px solid var(--bd)">${y} 年</td><td style="padding:6px 10px;border:1px solid var(--bd)">${nums.length ? nums.join("、") : "—"}</td></tr>`;
   }).join("");
   const m = toolModal("oldDataModal");
   m.innerHTML = `<div class="modal-content" onclick="event.stopPropagation()" style="max-height:80vh;overflow-y:auto;width:min(520px,92vw)">
-    <h3>舊資料</h3>
+    <h3>舊資料（國文）</h3>
     <p style="margin:0 0 6px">新版本之前的作答：<strong>${b.t}</strong> 題，答對 <strong>${b.c}</strong> 題（${pct}%）</p>
     <p style="font-weight:bold;margin:14px 0 6px">舊版錯題（目前仍在錯題本）</p>
     <table style="width:100%;border-collapse:collapse;font-size:.95rem">${rows}</table>
@@ -439,11 +461,11 @@ function openOldModal() {
   m.classList.add("active");
 }
 
-// 卡片「清除紀錄」：只清除目前科目（國文或英文）
+// ---------- 清除紀錄（卡片按鈕呼叫） ----------
 function askClearRecords() {
   if (cur !== "chinese" && cur !== "english") return;
-  const name = cur === "chinese" ? "國文" : "英文";
-  const extra = cur === "chinese" ? "模擬測驗進度、學習統計資料、" : "";
+  const name = SUBJ_LABEL[cur];
+  const extra = cur === "chinese" ? "模擬測驗進度、學習統計資料、" : "模擬測驗進度、學習統計資料、";
   const m = toolModal("clearConfirm");
   m.innerHTML = `<div class="modal-content" onclick="event.stopPropagation()" style="width:min(380px,90vw);text-align:center">
     <h3 style="justify-content:center">是否確認刪除${name}刷題記錄？</h3>
@@ -457,13 +479,15 @@ function askClearRecords() {
 function doClearRecords() {
   const c = cur;
   save({ w: {}, c: 0, t: 0 });                       // 主程式的 save 會存到目前科目
+  // 只清除這個科目的統計與測驗紀錄
+  const keepSubj = a => (a.subj || "chinese") !== c;
+  toolWrite(TOOL_STATS_KEY, toolRead(TOOL_STATS_KEY, []).filter(keepSubj));
+  toolWrite(TOOL_TESTS_KEY, toolRead(TOOL_TESTS_KEY, []).filter(keepSubj));
+  const ex = toolRead(TOOL_EXAM_KEY, null);
+  if (ex && (ex.subj || "chinese") === c) { localStorage.removeItem(TOOL_EXAM_KEY); mockTimer && clearInterval(mockTimer); }
   if (c === "chinese") {
-    localStorage.removeItem(TOOL_STATS_KEY);
-    localStorage.removeItem(TOOL_EXAM_KEY);
-    localStorage.removeItem(TOOL_TESTS_KEY);
     localStorage.removeItem("tools_first_ts");
     toolWrite("tools_baseline", { t: 0, c: 0, w: [] });
-    mockTimer && clearInterval(mockTimer);
   }
   const cf = document.getElementById("clearConfirm");
   if (cf) cf.classList.remove("active");
@@ -494,15 +518,15 @@ go = function (k, f) { window.__extraPage = null; Object.keys(TOOL_PAGES).forEac
 const _tHome = home;
 home = function () { if (window.__extraPage) { renderTool(window.__extraPage); return; } return _tHome(); };
 
-// 記錄刷題練習的每一次作答（只記國文）
+// 記錄刷題練習的每一次作答（國文與英文）
 const _tSubmit = submit;
 submit = function () {
   const q = list[i];
   const ready = !done && picks && picks.size > 0 && q;   // 只在真的送出作答時記錄
   const letters = ready ? [...picks].sort().map(k => L[k]).join("") : "";
   _tSubmit();
-  if (ready && cur === "chinese") {
-    addAttempt(qidOf(q), letters === q.a, "practice");
+  if (ready && (cur === "chinese" || cur === "english")) {
+    addAttempt(cur, qidOf(q), letters === q.a, "practice");
   }
 };
 
