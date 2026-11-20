@@ -212,7 +212,12 @@ function renderMockEntry() {
   const resume = saved && !saved.done
     ? `<div class="card" style="margin-bottom:16px"><p style="margin:0 0 8px">有未完成的${SUBJ_LABEL[saved.subj || "chinese"]}模擬測驗（${saved.ids.length} 題）。</p>
        <button class="go" onclick="MockExam.resume()">繼續作答</button>
-       <button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="MockExam.discard()">放棄並重新設定</button></div>` : "";
+       <button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="MockExam.discard()">放棄並重新設定</button></div>`
+    : (saved && saved.done && saved.result
+      ? `<div class="card" style="margin-bottom:16px"><p style="margin:0 0 8px">上次的${SUBJ_LABEL[saved.subj || "chinese"]}模擬測驗已交卷（答對 ${saved.result.correct}/${saved.result.total}）。</p>
+       <button class="go" onclick="MockExam.showResult()">查看結果</button>
+       <button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="MockExam.finish()">關閉結果</button></div>`
+      : "");
   const years = subjYears();
   const yearOpts = `<option value="all">全部年度（混合）</option>` + years.map(y => `<option value="${y}" ${String(mockForm.year) === String(y) ? "selected" : ""}>${y} 年</option>`).join("");
   document.getElementById("app").innerHTML = `
@@ -318,41 +323,55 @@ const MockExam = {
     st.done = true;
     const subj = st.subj || "chinese";
     const all = subjQ(subj);
-    let correct = 0; const rows = [];
-    st.ids.forEach((id, i) => {
+    let correct = 0;
+    st.ids.forEach(id => {
       const q = all.find(x => x.id === id);
-      const picks = st.ans[id] || [];
-      const r = gradeChoice(q, picks);
+      const r = gradeChoice(q, st.ans[id] || []);
       if (r === "correct") correct++;
       if (r !== "skip") { addAttempt(subj, id, r === "correct", "mock"); bumpStudy(subj, id, r === "correct"); }
-      const cls = r === "correct" ? "color:var(--ok)" : r === "skip" ? "opacity:.6" : "color:var(--no)";
-      const txt = r === "correct" ? "✔ 答對" : r === "skip" ? "未作答" : "✘ 答錯";
-      rows.push(`<details style="margin-bottom:8px"><summary>${i + 1}. <span style="${cls}">${txt}</span>　${escT(q.q.replace(/【\d+~\d+題為題組題】\n*/g, "").slice(0, 30))}</summary>
-        <p style="margin:6px 0">你的答案：${picks.join("") || "—"}　正確答案：<strong>${q.a}</strong></p>
-        <div style="font-size:.9rem;line-height:1.7;white-space:pre-wrap">${escT(q.e || "暫無解析")}</div></details>`);
     });
     st.result = { correct, total: st.ids.length, auto };
     toolWrite(TOOL_EXAM_KEY, st);
     // 寫入一次測驗紀錄（給學習統計的「最近模擬測驗」）
-    const tests = toolArr(TOOL_TESTS_KEY);
+    const tests = toolRead(TOOL_TESTS_KEY, []);
     const start = st.startAt || Date.now();
     const usedMs = Math.min(Date.now() - start, (st.endAt - start) || Infinity);
     tests.push({ subj, scope: st.scope || "all", correct, total: st.ids.length, auto, secs: Math.round(usedMs / 1000), ts: Date.now() });
     toolWrite(TOOL_TESTS_KEY, tests.slice(-TOOL_MAX_TESTS));
-    const pct = st.ids.length ? Math.round(correct / st.ids.length * 100) : 0;
+    // 只有還停留在模擬測驗頁時才顯示結果；否則下次進入模擬測驗頁時再顯示
+    if (window.__extraPage === "mock") this.showResult(st);
+  },
+  showResult(stArg) {
+    const st = stArg || this.st || toolRead(TOOL_EXAM_KEY, null);
+    if (!st) return renderMockEntry();
+    this.st = st;
+    const subj = st.subj || "chinese";
+    const all = subjQ(subj);
+    const rows = st.ids.map((id, i) => {
+      const q = all.find(x => x.id === id);
+      const picks = st.ans[id] || [];
+      const r = gradeChoice(q, picks);
+      const cls = r === "correct" ? "color:var(--ok)" : r === "skip" ? "opacity:.6" : "color:var(--no)";
+      const txt = r === "correct" ? "✔ 答對" : r === "skip" ? "未作答" : "✘ 答錯";
+      return `<details style="margin-bottom:8px"><summary>${i + 1}. <span style="${cls}">${txt}</span>　${escT(q.q.replace(/【\d+~\d+題為題組題】\n*/g, "").slice(0, 30))}</summary>
+        <p style="margin:6px 0">你的答案：${picks.join("") || "—"}　正確答案：<strong>${q.a}</strong></p>
+        <div style="font-size:.9rem;line-height:1.7;white-space:pre-wrap">${escT(q.e || "暫無解析")}</div></details>`;
+    });
+    const res = st.result || { correct: 0, total: st.ids.length, auto: false };
+    const pct = res.total ? Math.round(res.correct / res.total * 100) : 0;
     document.getElementById("app").innerHTML = `
       <div class="card">
-        <div class="header-row"><h2>📝 測驗結果</h2></div>
+        <div class="header-row"><h2>📝 測驗結果（${SUBJ_LABEL[subj]}）</h2></div>
         <div style="text-align:center;margin:12px 0 18px">
           <div style="font-size:3rem;font-weight:bold;color:var(--ac)">${pct}%</div>
-          <p style="margin:4px 0">答對 <strong>${correct}</strong> / ${st.ids.length} 題${auto ? "（時間到自動交卷）" : ""}</p>
+          <p style="margin:4px 0">答對 <strong>${res.correct}</strong> / ${res.total} 題${res.auto ? "（時間到自動交卷）" : ""}</p>
         </div>
         ${rows.join("")}
         <button class="go" onclick="MockExam.finish()">完成，回到模擬測驗</button>
       </div>`;
     window.scrollTo(0, 0);
   },
-  finish() { localStorage.removeItem(TOOL_EXAM_KEY); this.st = null; renderMockEntry(); }
+  finish() { localStorage.removeItem(TOOL_EXAM_KEY); this.st = null; mockTimer && clearInterval(mockTimer); renderMockEntry(); }
 };
 window.MockExam = MockExam;
 
