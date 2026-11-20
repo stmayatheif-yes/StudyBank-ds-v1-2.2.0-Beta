@@ -87,6 +87,22 @@ function summarize(attempts, mode) {
 const TOOL_PAGES = { answers: "答案表", mock: "模擬測驗", stats: "學習統計" };
 const toolRead = (k, fb) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? fb : v; } catch (e) { return fb; } };
 const toolWrite = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+
+// 舊資料基準點：第一次載入新版時，把當時卡片上的數字存起來，之後的練習不影響它
+function ensureBaseline() {
+  if (localStorage.getItem("tools_baseline")) return;
+  const s = toolRead("qb_study", { w: {}, c: 0, t: 0 });
+  toolWrite("tools_baseline", { t: s.t || 0, c: s.c || 0, w: Object.keys(s.w || {}) });
+}
+// 清掉早期版本留下的無效紀錄（沒有題號的）
+function purgeInvalid() {
+  const arr = toolRead(TOOL_STATS_KEY, []);
+  const clean = arr.filter(a => a && typeof a.id === "string" && /^\d{3}-\d+$/.test(a.id));
+  if (clean.length !== arr.length) toolWrite(TOOL_STATS_KEY, clean);
+}
+ensureBaseline();
+purgeInvalid();
+const fmtDay = ts => { const d = new Date(ts); return d.getFullYear() + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getDate()).padStart(2, "0"); };
 let _qSrc = null, _qCache = [];
 const qidOf = q => q.id || (q.y + "-" + q.n);
 // 題目 id 統一為「年-題號」，並快取（主程式載入的題庫沒有 id 欄位）
@@ -98,6 +114,7 @@ const chineseQ = () => {
 const toolYears = () => [...new Set(chineseQ().map(q => q.y))].sort((a, b) => a - b);
 
 function addAttempt(id, ok, mode) {
+  if (!localStorage.getItem("tools_first_ts")) toolWrite("tools_first_ts", Date.now());
   const arr = toolRead(TOOL_STATS_KEY, []);
   arr.push({ id, ok, mode, ts: Date.now() });
   toolWrite(TOOL_STATS_KEY, arr.slice(-TOOL_MAX_ATTEMPTS));
@@ -325,7 +342,9 @@ function renderStats() {
   catch (e) { document.getElementById("app").innerHTML = `<div class="card"><h2>📊 學習統計</h2><p>統計載入失敗：${escT(e.message)}</p></div>`; }
 }
 function renderStatsInner() {
-  const attempts = toolRead(TOOL_STATS_KEY, []);
+  const attempts = toolRead(TOOL_STATS_KEY, []).filter(a => a && a.id);
+  const firstTs = toolRead("tools_first_ts", null);
+  const firstDay = firstTs ? fmtDay(firstTs) : "（尚未開始）";
   const s = summarize(attempts, statsMode);
   const pct = s.total ? Math.round(s.correct / s.total * 100) : 0;
   const yearRows = Object.keys(s.byYear).sort().map(y => {
@@ -334,8 +353,8 @@ function renderStatsInner() {
       <div style="height:10px;background:var(--bd);border-radius:6px;overflow:hidden"><div style="height:100%;width:${p}%;background:var(--ac)"></div></div></div>`;
   }).join("") || `<p class="meta"><span>還沒有作答紀錄。</span></p>`;
   const wrongRank = Object.keys(s.wrongCount).sort((a, b) => s.wrongCount[b] - s.wrongCount[a]).slice(0, 10)
-    .map(id => { const q = chineseQ().find(x => x.id === id); return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--bd)"><span>${q ? q.y + " 年 第" + q.n + " 題" : id}</span><strong>錯 ${s.wrongCount[id]} 次</strong></div>`; }).join("") || `<p class="meta"><span>目前沒有錯題。</span></p>`;
-  const recent = attempts.slice(-20).reverse().map(a => {
+    .map(id => { const q = chineseQ().find(x => x.id === id); return `<button onclick="StatsView.q('${id}')" style="display:flex;width:100%;justify-content:space-between;text-align:left;padding:8px 10px;margin:4px 0;background:var(--bg)"><span>${q ? q.y + " 年 第" + q.n + " 題" : escT(id)}</span><strong>錯 ${s.wrongCount[id]} 次</strong></button>`; }).join("") || `<p class="meta"><span>目前沒有錯題。</span></p>`;
+  const recent = attempts.filter(a => a && a.id).slice(-20).reverse().map(a => {
     const d = new Date(a.ts).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
     return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.9rem"><span>${a.id}　${(a.mode || "practice") === "mock" ? "模擬" : "練習"}</span><span>${a.ok ? "✔" : "✘"}　${d}</span></div>`;
   }).join("") || `<p class="meta"><span>還沒有作答紀錄。</span></p>`;
@@ -344,7 +363,8 @@ function renderStatsInner() {
     <div class="card">
       <div class="header-row"><h2>📊 學習統計</h2></div>
       <div>${tab("all", "全部")}${tab("practice", "練習")}${tab("mock", "模擬")}</div>
-      <span class="helper-text">統計從這個版本開始記錄，之前的練習不會計入。多選題需完全答對才算答對。</span>
+      <span class="helper-text">統計從 ${firstDay} 開始記錄，之前的練習請看各科卡片。多選題需完全答對才算答對。</span>
+      <button onclick="StatsView.old()" style="margin:4px 0 8px;padding:6px 12px;font-size:.85rem">舊資料</button>
       <div style="display:flex;gap:10px;margin:12px 0">
         <div class="card" style="flex:1;margin:0;text-align:center"><div class="meta" style="margin:0">作答題數</div><strong style="font-size:1.4rem">${s.total}</strong></div>
         <div class="card" style="flex:1;margin:0;text-align:center"><div class="meta" style="margin:0">正確率</div><strong style="font-size:1.4rem">${pct}%</strong></div>
@@ -355,8 +375,88 @@ function renderStatsInner() {
     </div>`;
   window.scrollTo(0, 0);
 }
-const StatsView = { mode(k) { statsMode = k; renderStats(); } };
+const StatsView = {
+  mode(k) { statsMode = k; renderStats(); },
+  old() { openOldModal(); },
+  q(id) { openQModal(id); }
+};
 window.StatsView = StatsView;
+
+// ---------- 彈窗（網站樣式） ----------
+function toolModal(id) {
+  let m = document.getElementById(id);
+  if (!m) {
+    m = document.createElement("div");
+    m.id = id;
+    m.className = "modal-overlay";
+    m.style.zIndex = "1500";
+    m.onclick = e => { if (e.target === m) m.classList.remove("active"); };
+    document.body.appendChild(m);
+  }
+  return m;
+}
+function openQModal(id) {
+  const q = chineseQ().find(x => qidOf(x) === id);
+  const m = toolModal("statQModal");
+  const body = q ? `
+    <p style="white-space:pre-wrap;line-height:1.7;margin:0 0 12px">${escT(groupPassageText(q))}</p>
+    ${q.o.map((o, k) => `<p style="margin:4px 0;${q.a.includes("ABCDEFGHIJ"[k]) ? "color:var(--ok);font-weight:bold" : ""}">${escT(o)}</p>`).join("")}
+    <p style="margin:12px 0 4px">正確答案：<strong>${q.a}</strong></p>
+    <div class="analysis-body" style="white-space:pre-wrap">${escT(q.e || "暫無解析")}</div>` : `<p>找不到這一題。</p>`;
+  m.innerHTML = `<div class="modal-content" onclick="event.stopPropagation()" style="max-height:80vh;overflow-y:auto;width:min(520px,92vw)">
+    <h3>${q ? q.y + " 年 第 " + q.n + " 題" : "題目"}</h3>${body}
+    <div class="modal-actions"><button class="go" onclick="document.getElementById('statQModal').classList.remove('active')">關閉</button></div></div>`;
+  m.classList.add("active");
+}
+function openOldModal() {
+  const b = toolRead("tools_baseline", { t: 0, c: 0, w: [] });
+  const cur = toolRead("qb_study", { w: {}, c: 0, t: 0 });
+  const still = (b.w || []).filter(id => cur.w && cur.w[id]);
+  const pct = b.t ? Math.round(b.c / b.t * 100) : 0;
+  const years = ["110", "111", "112", "113", "114", "115"];
+  const rows = years.map(y => {
+    const nums = still.filter(id => id.split("-")[0] === y).map(id => id.split("-")[1]).sort((a, b) => a - b);
+    return `<tr><td style="padding:6px 10px;border:1px solid var(--bd)">${y} 年</td><td style="padding:6px 10px;border:1px solid var(--bd)">${nums.length ? nums.join("、") : "—"}</td></tr>`;
+  }).join("");
+  const m = toolModal("oldDataModal");
+  m.innerHTML = `<div class="modal-content" onclick="event.stopPropagation()" style="max-height:80vh;overflow-y:auto;width:min(520px,92vw)">
+    <h3>舊資料</h3>
+    <p style="margin:0 0 6px">新版本之前的作答：<strong>${b.t}</strong> 題，答對 <strong>${b.c}</strong> 題（${pct}%）</p>
+    <p style="font-weight:bold;margin:14px 0 6px">舊版錯題（目前仍在錯題本）</p>
+    <table style="width:100%;border-collapse:collapse;font-size:.95rem">${rows}</table>
+    <span class="helper-text">舊版只記錄目前仍在錯題本的題號，已答對移出錯題本的題目不會顯示在這裡。</span>
+    <div class="modal-actions"><button class="go" onclick="document.getElementById('oldDataModal').classList.remove('active')">關閉</button></div></div>`;
+  m.classList.add("active");
+}
+
+// 卡片「清除紀錄」：只清除目前科目（國文或英文）
+function askClearRecords() {
+  if (cur !== "chinese" && cur !== "english") return;
+  const name = cur === "chinese" ? "國文" : "英文";
+  const extra = cur === "chinese" ? "模擬測驗進度、學習統計資料、" : "";
+  const m = toolModal("clearConfirm");
+  m.innerHTML = `<div class="modal-content" onclick="event.stopPropagation()" style="width:min(380px,90vw);text-align:center">
+    <h3 style="justify-content:center">是否確認刪除${name}刷題記錄？</h3>
+    <p style="text-align:left;line-height:1.7;margin:8px 0 18px;white-space:pre-wrap">包括：${extra}${name}卡片刷題內容\n\n刪除後無法復原。</p>
+    <div class="modal-actions" style="margin-top:0">
+      <button class="go" style="background:var(--no)" onclick="doClearRecords()">是，確認刪除</button>
+      <button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="document.getElementById('clearConfirm').classList.remove('active')">否，我再想想</button>
+    </div></div>`;
+  m.classList.add("active");
+}
+function doClearRecords() {
+  const c = cur;
+  save({ w: {}, c: 0, t: 0 });                       // 主程式的 save 會存到目前科目
+  if (c === "chinese") {
+    localStorage.removeItem(TOOL_STATS_KEY);
+    localStorage.removeItem(TOOL_EXAM_KEY);
+    localStorage.removeItem("tools_first_ts");
+    toolWrite("tools_baseline", { t: 0, c: 0, w: [] });
+    mockTimer && clearInterval(mockTimer);
+  }
+  document.getElementById("clearConfirm").classList.remove("active");
+  home();
+}
 
 // ---------- 側邊欄 ----------
 const _navAfter = document.getElementById("navSettings");
