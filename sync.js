@@ -26,13 +26,17 @@ function parseOr(raw, fallback) {
 }
 
 // 讀取本機目前狀態（records = 各科刷題紀錄；settings = 外觀設定與自定義顏色）
+const TOOL_SYNC_KEYS = ["tools_attempts", "tools_tests", "tools_first_ts", "tools_first_en", "tools_baseline", "tools_baseline_en"];
+
 function readLocal(st) {
   const records = {};
   for (const k in STORE_KEYS) records[k] = parseOr(st.getItem(STORE_KEYS[k]), null);
   const settings = {};
   SETTING_KEYS.forEach(k => { settings[k] = st.getItem(k); });
   CUSTOM_KEYS.forEach(k => { settings[k] = parseOr(st.getItem(k), []); });
-  return { records, settings };
+  const tools = {};
+  TOOL_SYNC_KEYS.forEach(k => { const raw = st.getItem(k); if (raw != null) tools[k] = parseOr(raw, null); });
+  return { records, settings, tools };
 }
 
 // 作答題數 = 各科 t 的總和
@@ -54,6 +58,10 @@ function writeLocal(snap, st) {
     if (v == null) st.removeItem(k); else st.setItem(k, v);
   });
   CUSTOM_KEYS.forEach(k => st.setItem(k, JSON.stringify(snap.settings[k] || [])));
+  TOOL_SYNC_KEYS.forEach(k => {
+    const v = (snap.tools || {})[k];
+    if (v == null) st.removeItem(k); else st.setItem(k, JSON.stringify(v));
+  });
 }
 
 function canManualSync(snap, lastAt, now) {
@@ -100,13 +108,16 @@ function markSynced(snap) {
 }
 
 // ---------- 雲端讀寫 ----------
+function cloudAsSnap() {
+  return { records: cloudSnap.records, settings: cloudSnap.settings, tools: cloudSnap.tools || {} };
+}
 const cloudRef = () => doc(db, "users", user.uid, "data", "sync");
 async function fetchCloud() {
   const snap = await getDoc(cloudRef());
   return snap.exists() ? snap.data() : null;
 }
 async function uploadLocal(snap) {
-  await setDoc(cloudRef(), { records: snap.records, settings: snap.settings, updatedAt: Date.now() });
+  await setDoc(cloudRef(), { records: snap.records, settings: snap.settings, tools: snap.tools || {}, updatedAt: Date.now() });
 }
 
 // ---------- 確認彈窗（網站樣式，放在最上層） ----------
@@ -231,6 +242,9 @@ function renderSyncPage() {
 
 // 開啟同步頁（仿照設定頁：隱藏科目切換列、側邊欄高亮「雲端同步」）
 function openSyncPage() {
+  // 離開學習工具頁：清掉工具頁的狀態與側邊欄高亮
+  window.__extraPage = null;
+  ["answers", "mock", "stats"].forEach(k => { const el = document.getElementById("nav_" + k); if (el) el.classList.remove("active"); });
   // 進入同步頁時，一併關掉仍開著的「選擇科目」彈窗（與設定頁相同）
   const sm = document.getElementById("subjectModal");
   if (sm) sm.classList.remove("active");
@@ -313,7 +327,7 @@ async function checkAfterLogin() {
   cloudSnap = await fetchCloud();
   if (!cloudSnap) { pending = false; return; }
   const local = readLocal(localStorage);
-  pending = canonical(local) !== canonical({ records: cloudSnap.records, settings: cloudSnap.settings });
+  pending = canonical(local) !== canonical(cloudAsSnap());
   if (!pending) markSynced(local);
   else openSyncPage();
 }
@@ -321,8 +335,8 @@ async function checkAfterLogin() {
 async function overwriteLocal() {
   const ok = await askConfirm("覆蓋本機", "確定要用雲端資料覆蓋本機嗎？本機目前的紀錄與設定會被取代，此操作無法復原。", "覆蓋本機");
   if (!ok) return;
-  writeLocal({ records: cloudSnap.records, settings: cloudSnap.settings }, localStorage);
-  markSynced({ records: cloudSnap.records, settings: cloudSnap.settings });
+  writeLocal(cloudAsSnap(), localStorage);
+  markSynced(cloudAsSnap());
   location.reload();
 }
 
