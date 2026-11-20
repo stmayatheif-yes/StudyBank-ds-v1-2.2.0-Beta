@@ -1,0 +1,390 @@
+/* ==========================================
+   第一階段工具：答案表、模擬測驗、學習統計
+   使用方式：放在 GitHub 專案根目錄，並在 index.html 的 </body> 前、
+   sync.js 之前加上：<script src="tools.js"></script>
+   ========================================== */
+
+/*PURE-START*/
+const TOOL_STATS_KEY = "tools_attempts";
+const TOOL_EXAM_KEY = "tools_exam";
+const TOOL_MAX_ATTEMPTS = 2000;
+
+// 同題組的題目要一起出：回傳 { 題號範圍: [a,b] }，找不到回傳 null
+function groupRangeOf(all, q) {
+  const n = parseInt(q.n, 10);
+  for (const x of all) {
+    if (x.y !== q.y) continue;
+    const m = x.q.match(/【(\d+)~(\d+)題為題組題】/);
+    if (m && n >= +m[1] && n <= +m[2]) return [+m[1], +m[2]];
+  }
+  return null;
+}
+
+// 把題目切成「單位」：單題一個，題組整組一個（只含池內題目）
+function buildUnits(all, pool) {
+  const inPool = new Set(pool.map(q => q.id));
+  const seen = new Set();
+  const units = [];
+  pool.forEach(q => {
+    if (seen.has(q.id)) return;
+    const r = groupRangeOf(all, q);
+    if (r) {
+      const members = all.filter(x => x.y === q.y && +x.n >= r[0] && +x.n <= r[1] && inPool.has(x.id))
+                         .sort((a, b) => +a.n - +b.n);
+      members.forEach(x => seen.add(x.id));
+      units.push(members);
+    } else {
+      seen.add(q.id);
+      units.push([q]);
+    }
+  });
+  return units;
+}
+
+// 抽題：與隨機刷題相同規則（單題能放就放，題組放不下先跳過，不足才整組補入）
+function pickUnitsN(units, N, rnd) {
+  const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const order = shuffle(units);
+  const chosen = [], deferred = [];
+  let count = 0;
+  for (const u of order) {
+    if (count >= N) break;
+    if (count + u.length <= N) { chosen.push(u); count += u.length; }
+    else deferred.push(u);
+  }
+  for (const u of deferred) {
+    if (count >= N) break;
+    chosen.push(u); count += u.length;
+  }
+  return shuffle(chosen).flat();
+}
+
+// 判分（第一階段：多選只有完全答對才算對）
+function gradeChoice(q, picks) {
+  if (!picks || !picks.length) return "skip";
+  const p = [...picks].sort().join("");
+  return p === q.a ? "correct" : "wrong";
+}
+
+// 統計：依模式過濾後計算
+function summarize(attempts, mode) {
+  const list = attempts.filter(a => mode === "all" || (a.mode || "practice") === mode);
+  const total = list.length;
+  const correct = list.filter(a => a.ok).length;
+  const byYear = {};
+  list.forEach(a => {
+    const y = a.id.split("-")[0];
+    byYear[y] = byYear[y] || { t: 0, c: 0 };
+    byYear[y].t++; if (a.ok) byYear[y].c++;
+  });
+  const wrongCount = {};
+  list.forEach(a => { if (!a.ok) wrongCount[a.id] = (wrongCount[a.id] || 0) + 1; });
+  return { total, correct, byYear, wrongCount };
+}
+/*PURE-END*/
+
+// ---------- 讀寫 ----------
+const TOOL_PAGES = { answers: "答案表", mock: "模擬測驗", stats: "學習統計" };
+const toolRead = (k, fb) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? fb : v; } catch (e) { return fb; } };
+const toolWrite = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const chineseQ = () => (typeof DATA !== "undefined" && DATA.chinese) ? DATA.chinese : [];
+const toolYears = () => [...new Set(chineseQ().map(q => q.y))].sort((a, b) => a - b);
+
+function addAttempt(id, ok, mode) {
+  const arr = toolRead(TOOL_STATS_KEY, []);
+  arr.push({ id, ok, mode, ts: Date.now() });
+  toolWrite(TOOL_STATS_KEY, arr.slice(-TOOL_MAX_ATTEMPTS));
+}
+
+// 模擬測驗與練習共用的錯題本（qb_study）
+function bumpStudy(id, ok) {
+  const s = toolRead("qb_study", { w: {}, c: 0, t: 0 });
+  s.t = (s.t || 0) + 1;
+  if (ok) { s.c = (s.c || 0) + 1; delete s.w[id]; } else { s.w[id] = 1; }
+  toolWrite("qb_study", s);
+}
+
+// ---------- 導覽 ----------
+function setToolNav(name) {
+  ["navHome", "navSettings", "navSync"].forEach(x => { const el = document.getElementById(x); if (el) el.classList.remove("active"); });
+  Object.keys(TOOL_PAGES).forEach(k => { const el = document.getElementById("nav_" + k); if (el) el.classList.toggle("active", k === name); });
+}
+async function openTool(name) {
+  const sm = document.getElementById("subjectModal"); if (sm) sm.classList.remove("active");
+  const sb = document.getElementById("sidebar");
+  if (sb && sb.classList.contains("active") && typeof toggleSidebar === "function") toggleSidebar();
+  window.__syncActive = false;
+  window.__extraPage = name;
+  currentPage = "tool";
+  document.getElementById("subjectNav").style.display = "none";
+  setToolNav(name);
+  history.replaceState(null, "", "#tool-" + name);
+  document.getElementById("app").innerHTML = `<div class="card"><p class="meta"><span>載入中…</span></p></div>`;
+  if (typeof loadSubject === "function" && !LOADED.chinese) await loadSubject("chinese");
+  if (window.__extraPage === name) renderTool(name);
+}
+function renderTool(name) {
+  if (name === "answers") return renderAnswers();
+  if (name === "mock") return renderMockEntry();
+  if (name === "stats") return renderStats();
+}
+
+// ---------- 答案表 ----------
+let answerYear = "all";
+function renderAnswers() {
+  const years = toolYears();
+  const data = chineseQ().filter(q => answerYear === "all" || String(q.y) === String(answerYear))
+                         .sort((a, b) => (a.y - b.y) || (+a.n - +b.n));
+  const btns = ["all", ...years].map(y => `<button class="go" style="width:auto;padding:6px 12px;margin:0 6px 8px 0;${String(answerYear) === String(y) ? "" : "background:var(--bd);color:var(--text-color);box-shadow:none"}" onclick="AnswerTable.year('${y}')">${y === "all" ? "全部" : y + " 年"}</button>`).join("");
+  const cells = data.map(q => `<div style="display:flex;justify-content:space-between;padding:6px 10px;border:1px solid var(--bd);border-radius:8px"><span>${answerYear === "all" ? q.y + "‧" : ""}${q.n}</span><strong>${q.a}</strong></div>`).join("");
+  document.getElementById("app").innerHTML = `
+    <div class="card">
+      <div class="header-row"><h2>📋 答案表</h2></div>
+      <div>${btns}</div>
+      <span class="helper-text">多選題以字母合併顯示，例如 CD。作答後的對錯請以刷題紀錄為準。</span>
+      ${data.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:12px">${cells}</div>` : `<p class="meta"><span>目前沒有題目資料。</span></p>`}
+    </div>`;
+  window.scrollTo(0, 0);
+}
+const AnswerTable = { year(y) { answerYear = y; renderAnswers(); } };
+window.AnswerTable = AnswerTable;
+
+// ---------- 模擬測驗 ----------
+let mockForm = { year: "all", count: 25, minutes: 45 };
+let mockTimer = null;
+
+function renderMockEntry() {
+  const saved = toolRead(TOOL_EXAM_KEY, null);
+  const years = toolYears();
+  const resume = saved && !saved.done
+    ? `<div class="card" style="margin-bottom:16px"><p style="margin:0 0 8px">有未完成的模擬測驗（${saved.ids.length} 題）。</p>
+       <button class="go" onclick="MockExam.resume()">繼續作答</button>
+       <button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="MockExam.discard()">放棄並重新設定</button></div>` : "";
+  const yearOpts = `<option value="all">全部年度（混合）</option>` + years.map(y => `<option value="${y}" ${String(mockForm.year) === String(y) ? "selected" : ""}>${y} 年</option>`).join("");
+  document.getElementById("app").innerHTML = `
+    ${resume}
+    <div class="card">
+      <div class="header-row"><h2>📝 模擬測驗</h2></div>
+      <p style="margin:0 0 6px;font-weight:bold">範圍</p>
+      <select id="mkYear" style="width:100%">${yearOpts}</select>
+      <p style="margin:14px 0 6px;font-weight:bold">題數</p>
+      <input type="number" id="mkCount" min="1" value="${mockForm.count}" style="width:100%">
+      <p style="margin:14px 0 6px;font-weight:bold">時間（分鐘）</p>
+      <input type="number" id="mkMin" min="1" value="${mockForm.minutes}" style="width:100%">
+      <span class="helper-text">只抽選擇題（單選與多選），題組整組一起出。時間到自動交卷。</span>
+      <button class="go" onclick="MockExam.start()">開始測驗</button>
+    </div>`;
+  window.scrollTo(0, 0);
+}
+
+function examPool() {
+  const y = document.getElementById("mkYear").value;
+  return chineseQ().filter(q => y === "all" || String(q.y) === String(y));
+}
+
+const MockExam = {
+  start() {
+    const pool = examPool();
+    let N = parseInt(document.getElementById("mkCount").value, 10);
+    let M = parseInt(document.getElementById("mkMin").value, 10);
+    if (!pool.length) { alert("這個範圍沒有題目"); return; }
+    if (!N || N < 1) { alert("請輸入題數"); return; }
+    if (!M || M < 1) { alert("請輸入時間"); return; }
+    if (N > pool.length) N = pool.length;
+    mockForm = { year: document.getElementById("mkYear").value, count: N, minutes: M };
+    const ids = pickUnitsN(buildUnits(chineseQ(), pool), N, Math.random).map(q => q.id);
+    const st = { ids, idx: 0, ans: {}, endAt: Date.now() + M * 60000, done: false };
+    toolWrite(TOOL_EXAM_KEY, st);
+    this.run(st);
+  },
+  resume() { const st = toolRead(TOOL_EXAM_KEY, null); if (st && !st.done) this.run(st); },
+  discard() { localStorage.removeItem(TOOL_EXAM_KEY); renderMockEntry(); },
+  run(st) {
+    clearInterval(mockTimer);
+    mockTimer = setInterval(() => this.tick(), 1000);
+    this.st = st;
+    this.render();
+    this.tick();
+  },
+  tick() {
+    const st = this.st; if (!st || st.done) return;
+    const left = Math.max(0, st.endAt - Date.now());
+    const el = document.getElementById("mkTimer");
+    if (el) el.textContent = String(Math.floor(left / 60000)).padStart(2, "0") + ":" + String(Math.floor(left / 1000) % 60).padStart(2, "0");
+    if (left <= 0) this.submit(true);
+  },
+  q() { return chineseQ().find(x => x.id === this.st.ids[this.st.idx]); },
+  pick(letter) {
+    const q = this.q(), st = this.st;
+    if (q.a.length > 1) {
+      const arr = st.ans[q.id] || [];
+      st.ans[q.id] = arr.includes(letter) ? arr.filter(x => x !== letter) : [...arr, letter].sort();
+    } else {
+      st.ans[q.id] = [letter];
+    }
+    toolWrite(TOOL_EXAM_KEY, st);
+    this.render();
+  },
+  go(i) { this.st.idx = Math.max(0, Math.min(this.st.ids.length - 1, i)); toolWrite(TOOL_EXAM_KEY, this.st); this.render(); window.scrollTo(0, 0); },
+  render() {
+    const st = this.st, q = this.q(), letters = "ABCDEFGHIJ";
+    const picks = st.ans[q.id] || [];
+    const grid = st.ids.map((id, i) => `<button onclick="MockExam.go(${i})" style="padding:4px 0;margin:0;${i === st.idx ? "border-color:var(--ac);" : ""}${(st.ans[id] || []).length ? "background:color-mix(in srgb,var(--ac) 20%,var(--card));" : ""}">${i + 1}</button>`).join("");
+    const body = groupPassageText(q);
+    document.getElementById("app").innerHTML = `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px dashed var(--bd)">
+          <span>第 ${st.idx + 1} / ${st.ids.length} 題</span>
+          <span id="mkTimer" style="font-weight:bold;color:var(--ac)"></span>
+          <button onclick="MockExam.confirmSubmit()" style="padding:6px 12px;margin:0">交卷</button>
+        </div>
+        <p style="white-space:pre-wrap;font-size:1.05rem;line-height:1.8">${escT(body)}</p>
+        ${q.a.length > 1 ? `<span class="helper-text">多選題，可選多個。</span>` : ""}
+        ${q.o.map((o, k) => `<button class="opt ${picks.includes(letters[k]) ? "sel" : ""}" onclick="MockExam.pick('${letters[k]}')">${o}</button>`).join("")}
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button style="flex:1;margin:0" ${st.idx === 0 ? "disabled" : ""} onclick="MockExam.go(${st.idx - 1})">上一題</button>
+          <button style="flex:1;margin:0" ${st.idx === st.ids.length - 1 ? "disabled" : ""} onclick="MockExam.go(${st.idx + 1})">下一題</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:6px;margin-top:14px">${grid}</div>
+      </div>`;
+    const el = document.getElementById("mkTimer");
+    if (el) { const left = Math.max(0, st.endAt - Date.now()); el.textContent = String(Math.floor(left / 60000)).padStart(2, "0") + ":" + String(Math.floor(left / 1000) % 60).padStart(2, "0"); }
+  },
+  confirmSubmit() {
+    const unanswered = this.st.ids.filter(id => !(this.st.ans[id] || []).length).length;
+    const msg = unanswered ? `還有 ${unanswered} 題未作答，確定交卷？交卷後無法修改。` : "確定交卷？交卷後無法修改。";
+    if (confirm(msg)) this.submit(false);
+  },
+  submit(auto) {
+    const st = this.st; if (!st || st.done) return;
+    clearInterval(mockTimer);
+    st.done = true;
+    let correct = 0; const rows = [];
+    st.ids.forEach((id, i) => {
+      const q = chineseQ().find(x => x.id === id);
+      const picks = st.ans[id] || [];
+      const r = gradeChoice(q, picks);
+      if (r === "correct") correct++;
+      if (r !== "skip") { addAttempt(id, r === "correct", "mock"); bumpStudy(id, r === "correct"); }
+      const cls = r === "correct" ? "color:var(--ok)" : r === "skip" ? "opacity:.6" : "color:var(--no)";
+      const txt = r === "correct" ? "✔ 答對" : r === "skip" ? "未作答" : "✘ 答錯";
+      rows.push(`<details style="margin-bottom:8px"><summary>${i + 1}. <span style="${cls}">${txt}</span>　${escT(q.q.replace(/【\d+~\d+題為題組題】\n*/g, "").slice(0, 30))}</summary>
+        <p style="margin:6px 0">你的答案：${picks.join("") || "—"}　正確答案：<strong>${q.a}</strong></p>
+        <div style="font-size:.9rem;line-height:1.7;white-space:pre-wrap">${escT(q.e || "暫無解析")}</div></details>`);
+    });
+    st.result = { correct, total: st.ids.length, auto };
+    toolWrite(TOOL_EXAM_KEY, st);
+    const pct = st.ids.length ? Math.round(correct / st.ids.length * 100) : 0;
+    document.getElementById("app").innerHTML = `
+      <div class="card">
+        <div class="header-row"><h2>📝 測驗結果</h2></div>
+        <div style="text-align:center;margin:12px 0 18px">
+          <div style="font-size:3rem;font-weight:bold;color:var(--ac)">${pct}%</div>
+          <p style="margin:4px 0">答對 <strong>${correct}</strong> / ${st.ids.length} 題${auto ? "（時間到自動交卷）" : ""}</p>
+        </div>
+        ${rows.join("")}
+        <button class="go" onclick="MockExam.finish()">完成，回到模擬測驗</button>
+      </div>`;
+    window.scrollTo(0, 0);
+  },
+  finish() { localStorage.removeItem(TOOL_EXAM_KEY); this.st = null; renderMockEntry(); }
+};
+window.MockExam = MockExam;
+
+// 題組引文（與刷題頁一樣：附屬題前面接上組首引文）
+function groupPassageText(q) {
+  const all = chineseQ();
+  const r = groupRangeOf(all, q);
+  if (!r) return q.q;
+  const start = all.find(x => x.y === q.y && +x.n === r[0]);
+  if (!start) return q.q.replace(/【\d+~\d+題為題組題】\n*/g, "");
+  if (+q.n === r[0]) return q.q.replace(/【\d+~\d+題為題組題】\n*/g, "");
+  const raw = start.q.replace(/【\d+~\d+題為題組題】\n*/g, "");
+  const br = raw.lastIndexOf("\n\n");
+  return br !== -1 ? raw.substring(0, br) + "\n\n" + q.q : q.q;
+}
+function escT(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+// ---------- 學習統計 ----------
+let statsMode = "all";
+function renderStats() {
+  const attempts = toolRead(TOOL_STATS_KEY, []);
+  const s = summarize(attempts, statsMode);
+  const pct = s.total ? Math.round(s.correct / s.total * 100) : 0;
+  const yearRows = Object.keys(s.byYear).sort().map(y => {
+    const v = s.byYear[y], p = Math.round(v.c / v.t * 100);
+    return `<div style="margin:8px 0"><div style="display:flex;justify-content:space-between;font-size:.9rem"><span>${y} 年</span><span>${p}%（${v.c}/${v.t}）</span></div>
+      <div style="height:10px;background:var(--bd);border-radius:6px;overflow:hidden"><div style="height:100%;width:${p}%;background:var(--ac)"></div></div></div>`;
+  }).join("") || `<p class="meta"><span>還沒有作答紀錄。</span></p>`;
+  const wrongRank = Object.keys(s.wrongCount).sort((a, b) => s.wrongCount[b] - s.wrongCount[a]).slice(0, 10)
+    .map(id => { const q = chineseQ().find(x => x.id === id); return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--bd)"><span>${q ? q.y + " 年 第" + q.n + " 題" : id}</span><strong>錯 ${s.wrongCount[id]} 次</strong></div>`; }).join("") || `<p class="meta"><span>目前沒有錯題。</span></p>`;
+  const recent = attempts.slice(-20).reverse().map(a => {
+    const d = new Date(a.ts).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.9rem"><span>${a.id}　${(a.mode || "practice") === "mock" ? "模擬" : "練習"}</span><span>${a.ok ? "✔" : "✘"}　${d}</span></div>`;
+  }).join("") || `<p class="meta"><span>還沒有作答紀錄。</span></p>`;
+  const tab = (k, label) => `<button class="go" style="width:auto;padding:6px 12px;margin:0 6px 8px 0;${statsMode === k ? "" : "background:var(--bd);color:var(--text-color);box-shadow:none"}" onclick="StatsView.mode('${k}')">${label}</button>`;
+  document.getElementById("app").innerHTML = `
+    <div class="card">
+      <div class="header-row"><h2>📊 學習統計</h2></div>
+      <div>${tab("all", "全部")}${tab("practice", "練習")}${tab("mock", "模擬")}</div>
+      <span class="helper-text">統計從這個版本開始記錄，之前的練習不會計入。多選題需完全答對才算答對。</span>
+      <div style="display:flex;gap:10px;margin:12px 0">
+        <div class="card" style="flex:1;margin:0;text-align:center"><div class="meta" style="margin:0">作答題數</div><strong style="font-size:1.4rem">${s.total}</strong></div>
+        <div class="card" style="flex:1;margin:0;text-align:center"><div class="meta" style="margin:0">正確率</div><strong style="font-size:1.4rem">${pct}%</strong></div>
+      </div>
+      <p style="font-weight:bold;margin:16px 0 4px">各年度正確率</p>${yearRows}
+      <p style="font-weight:bold;margin:20px 0 4px">最常答錯（前 10 題）</p>${wrongRank}
+      <p style="font-weight:bold;margin:20px 0 4px">最近 20 次作答</p>${recent}
+    </div>`;
+  window.scrollTo(0, 0);
+}
+const StatsView = { mode(k) { statsMode = k; renderStats(); } };
+window.StatsView = StatsView;
+
+// ---------- 側邊欄 ----------
+const _navAfter = document.getElementById("navSettings");
+Object.keys(TOOL_PAGES).reverse().forEach(k => {
+  const el = document.createElement("div");
+  el.className = "sidebar-item";
+  el.id = "nav_" + k;
+  el.textContent = ({ answers: "📋 答案表", mock: "📝 模擬測驗", stats: "📊 學習統計" })[k];
+  el.onclick = () => switchPage(k);
+  _navAfter.insertAdjacentElement("afterend", el);
+});
+
+// ---------- 包住既有函式 ----------
+const _tSwitchPage = switchPage;
+switchPage = function (p) {
+  if (TOOL_PAGES[p]) { openTool(p); return; }
+  window.__extraPage = null;
+  Object.keys(TOOL_PAGES).forEach(k => { const el = document.getElementById("nav_" + k); if (el) el.classList.remove("active"); });
+  return _tSwitchPage(p);
+};
+const _tGo = go;
+go = function (k, f) { window.__extraPage = null; Object.keys(TOOL_PAGES).forEach(x => { const el = document.getElementById("nav_" + x); if (el) el.classList.remove("active"); }); return _tGo(k, f); };
+const _tHome = home;
+home = function () { if (window.__extraPage) { renderTool(window.__extraPage); return; } return _tHome(); };
+
+// 記錄刷題練習的每一次作答（只記國文）
+const _tSubmit = submit;
+submit = function () {
+  const q = list[i];
+  const ready = !done && picks && picks.size > 0 && q;
+  const letters = ready ? [...picks].sort().map(k => L[k]).join("") : "";
+  _tSubmit();
+  if (ready && cur === "chinese") {
+    const cq = chineseQ().find(x => x.id === q.id) || q;
+    addAttempt(q.id, letters === q.a, "practice");
+  }
+};
+
+// 網址是 #tool-xxx 時直接開啟（等主程式初始化完成）
+function ensureToolShown() {
+  const m = location.hash.match(/^#tool-(answers|mock|stats)$/);
+  if (!m) return;
+  const sm = document.getElementById("subjectModal"); if (sm) sm.classList.remove("active");
+  openTool(m[1]);
+}
+setTimeout(ensureToolShown, 0);
+setTimeout(ensureToolShown, 300);
+window.addEventListener("load", ensureToolShown);
