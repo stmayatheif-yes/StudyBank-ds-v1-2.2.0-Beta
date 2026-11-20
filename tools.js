@@ -465,6 +465,8 @@ function doClearRecords() {
     toolWrite("tools_baseline", { t: 0, c: 0, w: [] });
     mockTimer && clearInterval(mockTimer);
   }
+  const cf = document.getElementById("clearConfirm");
+  if (cf) cf.classList.remove("active");
   home();
 }
 
