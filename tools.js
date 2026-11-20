@@ -83,6 +83,23 @@ function summarize(attempts, mode) {
   list.forEach(a => { if (!a.ok && a.id) wrongCount[a.id] = (wrongCount[a.id] || 0) + 1; });
   return { total, correct, byYear, wrongCount };
 }
+// 每日正確率（依日期排序）
+function dailySeries(attempts, fmt) {
+  const map = {};
+  attempts.forEach(a => {
+    const k = fmt(a.ts);
+    map[k] = map[k] || { t: 0, c: 0, ts: a.ts };
+    map[k].t++; if (a.ok) map[k].c++;
+    if (a.ts < map[k].ts) map[k].ts = a.ts;
+  });
+  return Object.keys(map).sort((x, y) => map[x].ts - map[y].ts)
+    .map(k => ({ label: k, pct: Math.round(map[k].c / map[k].t * 100), t: map[k].t, c: map[k].c }));
+}
+// 模擬測驗分數（依時間排序）
+function testSeries(tests, fmt) {
+  return tests.slice().sort((a, b) => a.ts - b.ts)
+    .map(t => ({ label: fmt(t.ts), pct: t.total ? Math.round(t.correct / t.total * 100) : 0, c: t.correct, t: t.total }));
+}
 /*PURE-END*/
 // ---------- 儲存 ----------
 const TOOL_PAGES = { answers: "答案表", mock: "模擬測驗", stats: "學習統計" };
@@ -403,20 +420,33 @@ function renderStatsInner() {
   const firstTs = toolRead(firstKeyOf(subj), null);
   const firstDay = firstTs ? fmtDay(firstTs) : "（尚未開始）";
   const all = subjQ(subj);
-  const yearRows = Object.keys(s.byYear).sort().map(y => {
-    const v = s.byYear[y], p = Math.round(v.c / v.t * 100);
-    return `<div style="margin:8px 0"><div style="display:flex;justify-content:space-between;font-size:.9rem"><span>${y} 年</span><span>${p}%（${v.c}/${v.t}）</span></div>
-      <div style="height:10px;background:var(--bd);border-radius:6px;overflow:hidden"><div style="height:100%;width:${p}%;background:var(--ac)"></div></div></div>`;
-  }).join("") || `<p class="meta"><span>還沒有作答紀錄。</span></p>`;
+  const allTests = toolArr(TOOL_TESTS_KEY).filter(t => t && (t.subj || "chinese") === subj);
+  const tests = allTests.slice(-20).reverse();
+  const modeAttempts = attempts.filter(a => statsMode === "all" || (a.mode || "practice") === statsMode);
+  const fmtMD = ts => { const d = new Date(ts); return (d.getMonth() + 1) + "/" + d.getDate(); };
+  const daily = dailySeries(modeAttempts, fmtDay);
+  const mockSeries = statsMode === "practice" ? [] : testSeries(allTests.filter(t => t.total), fmtMD);
+  const yearKeys = Object.keys(s.byYear).sort();
+  CHART_DATA = {
+    daily, mockSeries, correct: s.correct, wrong: s.total - s.correct,
+    years: yearKeys.map(y => ({ label: y + " 年", pct: Math.round(s.byYear[y].c / s.byYear[y].t * 100), c: s.byYear[y].c, t: s.byYear[y].t }))
+  };
+  const yearNums = yearKeys.map(y => `${y} 年：${s.byYear[y].c}/${s.byYear[y].t}`).join("　");
   const wrongRank = Object.keys(s.wrongCount).sort((a, b) => s.wrongCount[b] - s.wrongCount[a]).slice(0, 10)
     .map(id => { const q = all.find(x => x.id === id); return `<button onclick="StatsView.q('${id}')" style="display:flex;width:100%;justify-content:space-between;text-align:left;padding:8px 10px;margin:4px 0;background:var(--bg)"><span>${q ? q.y + " 年 第" + q.n + " 題" : escT(id)}</span><strong>錯 ${s.wrongCount[id]} 次</strong></button>`; }).join("") || `<p class="meta"><span>目前沒有錯題。</span></p>`;
-  const tests = toolArr(TOOL_TESTS_KEY).filter(t => t && (t.subj || "chinese") === subj).slice(-20).reverse();
   const recent = (statsMode === "practice") ? `<p class="meta"><span>練習沒有測驗紀錄，請切換到「全部」或「模擬」。</span></p>` :
     (tests.map(t => {
       const d = new Date(t.ts).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
       const label = !t.scope || t.scope === "all" ? "全範圍" : t.scope + " 年";
       return `<div style="padding:8px 0;border-bottom:1px dashed var(--bd)"><div style="display:flex;justify-content:space-between"><span>${label}　模擬</span><strong>${t.correct}/${t.total}</strong></div><div class="meta" style="margin:2px 0 0;font-size:.85rem">${d}　用時 ${fmtSecs(t.secs || 0)}${t.auto ? "（時間到自動交卷）" : ""}</div></div>`;
     }).join("") || `<p class="meta"><span>還沒有模擬測驗紀錄。</span></p>`);
+  const chartsHTML = `
+      <div class="card" style="margin:12px 0;padding:14px"><p style="font-weight:bold;margin:0 0 6px">作答趨勢（每日正確率）</p>${chartBox("chTrend", 200, daily.length ? "" : "還沒有作答紀錄。")}</div>
+      <div class="card" style="margin:12px 0;padding:14px"><p style="font-weight:bold;margin:0 0 6px">模擬測驗分數</p>${chartBox("chMock", 200, statsMode === "practice" ? "練習沒有模擬測驗，請切換到「全部」或「模擬」。" : (mockSeries.length ? "" : "還沒有模擬測驗紀錄。"))}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <div class="card" style="flex:1;min-width:200px;margin:12px 0;padding:14px"><p style="font-weight:bold;margin:0 0 6px">答對／答錯</p>${chartBox("chPie", 220, s.total ? "" : "還沒有作答紀錄。")}</div>
+        <div class="card" style="flex:2;min-width:240px;margin:12px 0;padding:14px"><p style="font-weight:bold;margin:0 0 6px">各年度正確率</p>${chartBox("chYear", Math.max(120, 36 * yearKeys.length + 40), yearKeys.length ? "" : "還沒有作答紀錄。")}<p class="meta" style="margin:8px 0 0;font-size:.85rem">${yearNums}</p></div>
+      </div>`;
   document.getElementById("app").innerHTML = `
     <div class="card">
       <div class="header-row"><h2>📊 學習統計</h2></div>
@@ -428,10 +458,11 @@ function renderStatsInner() {
         <div class="card" style="flex:1;margin:0;text-align:center"><div class="meta" style="margin:0">作答題數</div><strong style="font-size:1.4rem">${s.total}</strong></div>
         <div class="card" style="flex:1;margin:0;text-align:center"><div class="meta" style="margin:0">正確率</div><strong style="font-size:1.4rem">${pct}%</strong></div>
       </div>
-      <p style="font-weight:bold;margin:16px 0 4px">各年度正確率</p>${yearRows}
+      ${chartsHTML}
       <p style="font-weight:bold;margin:20px 0 4px">最常答錯（前 10 題）</p>${wrongRank}
       <p style="font-weight:bold;margin:20px 0 4px">最近模擬測驗（最近 20 次）</p>${recent}
     </div>`;
+  drawCharts();
   window.scrollTo(0, 0);
 }
 const StatsView = {
@@ -441,6 +472,54 @@ const StatsView = {
   q(id) { openQModal(id, toolSubj); }
 };
 window.StatsView = StatsView;
+
+// ---------- 圖表（Chart.js） ----------
+const CHART_JS_URL = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js";
+let CHART_DATA = null;
+const charts = {};
+function chartBox(id, h, emptyMsg) {
+  if (emptyMsg) return `<p class="meta" style="margin:0;font-size:.9rem">${escT(emptyMsg)}</p>`;
+  return `<div style="position:relative;height:${h}px"><canvas id="${id}"></canvas></div>`;
+}
+let chartJsPromise = null;
+function ensureChartJs() {
+  if (window.Chart) return Promise.resolve(window.Chart);
+  if (!chartJsPromise) chartJsPromise = new Promise((resolve, reject) => {
+    const sc = document.createElement("script");
+    sc.src = CHART_JS_URL;
+    sc.onload = () => resolve(window.Chart);
+    sc.onerror = () => { chartJsPromise = null; reject(new Error("圖表程式載入失敗，請檢查網路")); };
+    document.head.appendChild(sc);
+  });
+  return chartJsPromise;
+}
+function drawCharts() {
+  const d = CHART_DATA; if (!d) return;
+  const textColor = getComputedStyle(document.body).color || "#333";
+  const grid = { color: "rgba(128,128,128,.2)" };
+  const put = (id, cfg) => {
+    const el = document.getElementById(id); if (!el) return;
+    if (charts[id]) charts[id].destroy();
+    charts[id] = new window.Chart(el, cfg);
+  };
+  const common = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
+  const pctScale = { y: { min: 0, max: 100, ticks: { color: textColor, callback: v => v + "%" }, grid }, x: { ticks: { color: textColor, maxRotation: 0, autoSkip: true }, grid: { display: false } } };
+  ensureChartJs().then(() => {
+    if (d.daily.length) put("chTrend", { type: "line", data: { labels: d.daily.map(x => x.label), datasets: [{ data: d.daily.map(x => x.pct), borderColor: "#3b82f6", backgroundColor: "#3b82f6", tension: .3, pointRadius: 3 }] },
+      options: { ...common, scales: pctScale, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => { const x = d.daily[c.dataIndex]; return `${x.pct}%（${x.c}/${x.t}）`; } } } } } });
+    if (d.mockSeries.length) put("chMock", { type: "line", data: { labels: d.mockSeries.map(x => x.label), datasets: [{ data: d.mockSeries.map(x => x.pct), borderColor: "#10b981", backgroundColor: "#10b981", tension: .3, pointRadius: 4 }] },
+      options: { ...common, scales: pctScale, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => { const x = d.mockSeries[c.dataIndex]; return `${x.pct}%（${x.c}/${x.t}）`; } } } } } });
+    if (d.correct + d.wrong > 0) put("chPie", { type: "doughnut", data: { labels: ["答對", "答錯"], datasets: [{ data: [d.correct, d.wrong], backgroundColor: ["#10b981", "#ef4444"] }] },
+      options: { ...common, plugins: { legend: { display: true, position: "bottom", labels: { color: textColor } } } } });
+    if (d.years.length) put("chYear", { type: "bar", data: { labels: d.years.map(x => x.label), datasets: [{ data: d.years.map(x => x.pct), backgroundColor: "#3b82f6" }] },
+      options: { ...common, indexAxis: "y", scales: { x: { min: 0, max: 100, ticks: { color: textColor, callback: v => v + "%" }, grid }, y: { ticks: { color: textColor }, grid: { display: false } } },
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => { const x = d.years[c.dataIndex]; return `${x.pct}%（${x.c}/${x.t}）`; } } } } } });
+  }).catch(err => {
+    ["chTrend", "chMock", "chPie", "chYear"].forEach(id => {
+      const el = document.getElementById(id); if (el && el.parentNode) el.parentNode.innerHTML = `<p class="meta" style="margin:0;font-size:.85rem">${escT(err.message)}（數字仍可在下方看到）</p>`;
+    });
+  });
+}
 
 // ---------- 彈窗（網站樣式） ----------
 function toolModal(id) {
