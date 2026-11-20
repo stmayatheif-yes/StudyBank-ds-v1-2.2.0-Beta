@@ -444,7 +444,15 @@ function askClearRecords() {
   if (cur !== "chinese" && cur !== "english") return;
   const name = cur === "chinese" ? "國文" : "英文";
   const extra = cur === "chinese" ? "模擬測驗進度、學習統計資料、" : "";
-  if (confirm(`是否確認刪除${name}刷題記錄？\n包括：${extra}${name}卡片刷題內容\n\n刪除後無法復原。`)) doClearRecords();
+  const m = toolModal("clearConfirm");
+  m.innerHTML = `<div class="modal-content" onclick="event.stopPropagation()" style="width:min(380px,90vw);text-align:center">
+    <h3 style="justify-content:center">是否確認刪除${name}刷題記錄？</h3>
+    <p style="text-align:left;line-height:1.7;margin:8px 0 18px;white-space:pre-wrap">包括：${extra}${name}卡片刷題內容\n\n刪除後無法復原。</p>
+    <div class="modal-actions" style="margin-top:0">
+      <button class="go" style="background:var(--no)" onclick="doClearRecords()">是，確認刪除</button>
+      <button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="document.getElementById('clearConfirm').classList.remove('active')">否，我再想想</button>
+    </div></div>`;
+  m.classList.add("active");
 }
 function doClearRecords() {
   const c = cur;
