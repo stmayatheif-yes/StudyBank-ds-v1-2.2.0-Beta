@@ -73,12 +73,12 @@ function summarize(attempts, mode) {
   const correct = list.filter(a => a.ok).length;
   const byYear = {};
   list.forEach(a => {
-    const y = a.id.split("-")[0];
+    const y = String(a.id || "").split("-")[0] || "?";
     byYear[y] = byYear[y] || { t: 0, c: 0 };
     byYear[y].t++; if (a.ok) byYear[y].c++;
   });
   const wrongCount = {};
-  list.forEach(a => { if (!a.ok) wrongCount[a.id] = (wrongCount[a.id] || 0) + 1; });
+  list.forEach(a => { if (!a.ok && a.id) wrongCount[a.id] = (wrongCount[a.id] || 0) + 1; });
   return { total, correct, byYear, wrongCount };
 }
 /*PURE-END*/
@@ -87,7 +87,14 @@ function summarize(attempts, mode) {
 const TOOL_PAGES = { answers: "答案表", mock: "模擬測驗", stats: "學習統計" };
 const toolRead = (k, fb) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? fb : v; } catch (e) { return fb; } };
 const toolWrite = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
-const chineseQ = () => (typeof DATA !== "undefined" && DATA.chinese) ? DATA.chinese : [];
+let _qSrc = null, _qCache = [];
+const qidOf = q => q.id || (q.y + "-" + q.n);
+// 題目 id 統一為「年-題號」，並快取（主程式載入的題庫沒有 id 欄位）
+const chineseQ = () => {
+  const src = (typeof DATA !== "undefined" && DATA.chinese) ? DATA.chinese : [];
+  if (src !== _qSrc) { _qSrc = src; _qCache = src.map(q => q.id ? q : Object.assign({}, q, { id: qidOf(q) })); }
+  return _qCache;
+};
 const toolYears = () => [...new Set(chineseQ().map(q => q.y))].sort((a, b) => a - b);
 
 function addAttempt(id, ok, mode) {
@@ -172,6 +179,7 @@ function renderMockEntry() {
       <p style="margin:14px 0 6px;font-weight:bold">時間（分鐘）</p>
       <input type="number" id="mkMin" min="1" value="${mockForm.minutes}" style="width:100%">
       <span class="helper-text">只抽選擇題（單選與多選），題組整組一起出。時間到自動交卷。</span>
+      <p id="mkMsg" style="color:var(--no);min-height:1.2em;margin:8px 0 0;font-size:.9rem"></p>
       <button class="go" onclick="MockExam.start()">開始測驗</button>
     </div>`;
   window.scrollTo(0, 0);
@@ -187,12 +195,17 @@ const MockExam = {
     const pool = examPool();
     let N = parseInt(document.getElementById("mkCount").value, 10);
     let M = parseInt(document.getElementById("mkMin").value, 10);
-    if (!pool.length) { alert("這個範圍沒有題目"); return; }
-    if (!N || N < 1) { alert("請輸入題數"); return; }
-    if (!M || M < 1) { alert("請輸入時間"); return; }
-    if (N > pool.length) N = pool.length;
+    const msg = document.getElementById("mkMsg");
+    if (!pool.length) { msg.textContent = "這個範圍沒有題目"; return; }
+    if (!N || N < 1) { msg.textContent = "請輸入題數"; return; }
+    if (!M || M < 1) { msg.textContent = "請輸入時間"; return; }
+    if (N > pool.length) {               // 超過範圍：留在設定畫面，數字改成上限
+      document.getElementById("mkCount").value = pool.length;
+      msg.textContent = "超過範圍題數，已改為 " + pool.length + " 題";
+      return;
+    }
     mockForm = { year: document.getElementById("mkYear").value, count: N, minutes: M };
-    const ids = pickUnitsN(buildUnits(chineseQ(), pool), N, Math.random).map(q => q.id);
+    const ids = pickUnitsN(buildUnits(chineseQ(), pool), N, Math.random).map(q => qidOf(q));
     const st = { ids, idx: 0, ans: {}, endAt: Date.now() + M * 60000, done: false };
     toolWrite(TOOL_EXAM_KEY, st);
     this.run(st);
@@ -308,6 +321,10 @@ function escT(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").repl
 // ---------- 學習統計 ----------
 let statsMode = "all";
 function renderStats() {
+  try { renderStatsInner(); }
+  catch (e) { document.getElementById("app").innerHTML = `<div class="card"><h2>📊 學習統計</h2><p>統計載入失敗：${escT(e.message)}</p></div>`; }
+}
+function renderStatsInner() {
   const attempts = toolRead(TOOL_STATS_KEY, []);
   const s = summarize(attempts, statsMode);
   const pct = s.total ? Math.round(s.correct / s.total * 100) : 0;
@@ -369,12 +386,11 @@ home = function () { if (window.__extraPage) { renderTool(window.__extraPage); r
 const _tSubmit = submit;
 submit = function () {
   const q = list[i];
-  const ready = !done && picks && picks.size > 0 && q;
+  const ready = !done && picks && picks.size > 0 && q;   // 只在真的送出作答時記錄
   const letters = ready ? [...picks].sort().map(k => L[k]).join("") : "";
   _tSubmit();
   if (ready && cur === "chinese") {
-    const cq = chineseQ().find(x => x.id === q.id) || q;
-    addAttempt(q.id, letters === q.a, "practice");
+    addAttempt(qidOf(q), letters === q.a, "practice");
   }
 };
 
