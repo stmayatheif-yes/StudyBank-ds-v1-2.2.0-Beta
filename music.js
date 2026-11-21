@@ -12,9 +12,9 @@
   // 範例：{ id: "focus1", title: "專注鋼琴", artist: "自己", src: "music/focus1.mp3", cover: "music/focus1.jpg" }
   // id 不可重複；artist、cover 可省略
   const LOCAL_TRACKS = [
-  { id: "thunder1", title: "Thunder and Lightning", artist: "Luminewave", src: "music/luminewave-thunder-and-lightning-commercial-version-637008.mp3", cover: "music/thunder1.jpg" },
-  { id: "thunder2", title: "Dominator", artist: "AudioAtlant", src: "music/audioatlant-dominator-action-countdown-trailer-main-554635.mp3", cover: "music/thunder2.png" },
-];
+     { id: "thunder1", title: "Thunder and Lightning", artist: "Luminewave", src: "music/luminewave-thunder-and-lightning-commercial-version-637008.mp3", cover: "music/thunder1.jpg" },
+     { id: "thunder2", title: "Dominator", artist: "AudioAtlant", src: "music/audioatlant-dominator-action-countdown-trailer-main-554635.mp3", cover: "music/thunder2.png" },
+  ];
 
   const PL_KEY = "music_playlists", PREF_KEY = "music_prefs";
   const $ = (s, r) => (r || document).querySelector(s);
@@ -38,7 +38,8 @@
 
   // ===== 播放狀態 =====
   let queue = lib(prefs.src), idx = 0, cur = queue[0] || null, qLabel = libLabel(prefs.src);
-  let playing = false, loadedKey = null, shuffle = false, repeat = false, drag = false;
+  let playing = false, loadedKey = null, drag = false, mode = Math.min(3, Math.max(0, prefs.mode | 0)), sleepI = 0, sleepEnd = 0;
+  const SLEEP = [15, 30, 60], MODES = ["順序循環", "隨機播放", "單曲循環", "播完停止", "睡眠計時"];
   const audio = new Audio(); audio.preload = "none";
 
   // ===== 圖示 =====
@@ -51,7 +52,10 @@
     chk: '<circle cx="12" cy="12" r="10" style="fill:var(--ac)"/><path fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M7.5 12.5l3 3 6-6.5"/>',
     shuf: `<path ${S} d="M16 4h4v4M4 20L20 4M20 16v4h-4M4 4l5 5M15 15l5 5"/>`,
     rep: `<path ${S} d="M17 2l4 4-4 4M3 11V9a3 3 0 013-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 01-3 3H3"/>`,
-    list: `<path ${S} d="M4 6h16M4 12h16M4 18h10"/>`, x: `<path ${S} d="M6 6l12 12M18 6L6 18"/>`
+    list: `<path ${S} d="M4 6h16M4 12h16M4 18h10"/>`, x: `<path ${S} d="M6 6l12 12M18 6L6 18"/>`,
+    rep1: `<path ${S} d="M17 2l4 4-4 4M3 11V9a3 3 0 013-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 01-3 3H3"/><text x="12" y="15.5" font-size="9" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">1</text>`,
+    stop: `<path ${S} d="M4 12h11M11 7l5 5-5 5M20 5v14"/>`,
+    moon: `<path ${S} d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>`
   };
   const ic = (n, s) => `<svg viewBox="0 0 24 24" width="${s || 24}" height="${s || 24}" fill="currentColor">${ICON[n]}</svg>`;
 
@@ -108,6 +112,9 @@
 ^#mpToast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:1300;background:rgba(0,0,0,.8);color:#fff;padding:8px 16px;border-radius:999px;font-size:.9rem;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90%;text-align:center}
 ^#mpToast.show{opacity:1}
 html[data-style="glass"] #mpRoot #mpBar,html[data-style="glass"] #mpRoot .mp-sheet{background:color-mix(in srgb,var(--card) 55%,transparent);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%)}
+^.mp-sp{width:48px}
+^.mp-mw{position:relative;display:flex;flex-direction:column;align-items:center;width:48px}
+^.mp-mw small{position:absolute;top:100%;margin-top:-8px;font-size:.68rem;opacity:.75;white-space:nowrap}
 main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoot #(mp\w+)/g, "#$1");
   const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
@@ -131,11 +138,11 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
     <button class="mp-ib" id="fAdd" aria-label="加入播放清單">${ic("plus", 32)}</button></div>
   <div><input type="range" id="fSeek" min="0" max="1000" value="0"><div class="mp-time"><span id="fCur">0:00</span><span id="fDur">0:00</span></div></div>
   <div class="mp-ctrl">
-    <button class="mp-ib" id="fShuf" aria-label="隨機">${ic("shuf")}</button>
+    <span class="mp-sp"></span>
     <button class="mp-ib" id="fPrev" aria-label="上一首">${ic("prev", 32)}</button>
     <button class="mp-ib big" id="fPlay" aria-label="播放／暫停"></button>
     <button class="mp-ib" id="fNext" aria-label="下一首">${ic("next", 32)}</button>
-    <button class="mp-ib" id="fRep" aria-label="單曲循環">${ic("rep")}</button>
+    <div class="mp-mw"><button class="mp-ib" id="fMode" aria-label="切換播放模式"></button><small id="fModeL"></small></div>
   </div>
 </div></div>
 
@@ -206,8 +213,9 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
   }
   function next(auto) {
     if (!queue.length) return;
-    if (auto && repeat) return playIdx(idx);
-    if (shuffle && queue.length > 1) { let j; do { j = Math.random() * queue.length | 0; } while (j === idx); return playIdx(j); }
+    if (auto && mode === 2) return playIdx(idx);
+    if (mode === 1 && queue.length > 1) { let j; do { j = Math.random() * queue.length | 0; } while (j === idx); return playIdx(j); }
+    if (auto && mode === 3 && idx === queue.length - 1) { stopAll(); playing = false; loadedKey = null; idx = 0; cur = queue[0]; ui(); return; }
     playIdx(idx + 1);
   }
   const pos = () => {
@@ -230,6 +238,11 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
   audio.addEventListener("error", () => { if (cur && cur.src === "local" && audio.src) { playing = false; ui(); toast("找不到音檔：" + cur.url); } });
 
   // ===== 畫面更新 =====
+  function modeUI() {
+    const b = $$("#fMode"); b.innerHTML = ic(["rep", "shuf", "rep1", "stop", "moon"][mode]); b.classList.toggle("on", mode > 0);
+    $$("#fModeL").textContent = mode === 4 ? "睡眠 " + fmt(Math.max(0, (sleepEnd - Date.now()) / 1000)) : MODES[mode];
+  }
+  function endSleep() { mode = 0; sleepEnd = 0; prefs.mode = 0; save(PREF_KEY, prefs); if (playing) toggle(); toast("睡眠計時結束，已暫停"); ui(); }
   function ui() {
     const t = cur ? cur.title : (prefs.src === "yt" ? "尚未加入 YouTube 歌曲" : "尚未加入本地音樂");
     const a = cur ? (cur.artist || (cur.src === "yt" ? "YouTube" : "")) : "點 ∧ 展開，加入音樂";
@@ -240,13 +253,14 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
     $$("#fQ").textContent = qLabel;
     const act = cur ? cur.src : prefs.src;
     root.querySelectorAll(".mp-seg button").forEach(b => b.classList.toggle("on", b.dataset.s === act));
-    $$("#fShuf").classList.toggle("on", shuffle); $$("#fRep").classList.toggle("on", repeat);
+    modeUI();
     if ("mediaSession" in navigator && cur) {
       try { navigator.mediaSession.metadata = new MediaMetadata({ title: cur.title, artist: cur.artist || "", artwork: cur.cover ? [{ src: new URL(cur.cover, location.href).href }] : [] }); } catch (e) {}
     }
     if ($$("#mpWrap").classList.contains("open")) renderSheet();
   }
   setInterval(() => {
+    if (mode === 4) { if (Date.now() >= sleepEnd) endSleep(); else modeUI(); }
     if (drag) return;
     const p = pos(), r = p[1] ? p[0] / p[1] : 0;
     $$("#bProg").style.width = r * 100 + "%"; $$("#fSeek").value = r * 1000;
@@ -259,8 +273,15 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
   $$("#bPlay").onclick = toggle; $$("#fPlay").onclick = toggle;
   $$("#fDown").onclick = () => openFull(false);
   $$("#fNext").onclick = () => next(); $$("#fPrev").onclick = prev;
-  $$("#fShuf").onclick = () => { shuffle = !shuffle; ui(); };
-  $$("#fRep").onclick = () => { repeat = !repeat; ui(); };
+  $$("#fMode").onclick = () => {
+    if (mode === 4 && sleepI < SLEEP.length - 1) sleepI++;
+    else { mode = (mode + 1) % 5; sleepI = 0; }
+    if (mode === 4) sleepEnd = Date.now() + SLEEP[sleepI] * 60000; else sleepEnd = 0;
+    prefs.mode = mode < 4 ? mode : 0; save(PREF_KEY, prefs);
+    toast(mode === 4 ? "睡眠計時：" + SLEEP[sleepI] + " 分鐘後暫停" : MODES[mode] + (mode === 3 ? "（整份播完後停止）" : ""));
+    ui();
+  };
+  document.addEventListener("visibilitychange", () => { if (mode === 4 && Date.now() >= sleepEnd) endSleep(); });
   root.querySelectorAll(".mp-seg button").forEach(b => b.onclick = () => setSource(b.dataset.s));
   const sk = $$("#fSeek");
   sk.addEventListener("input", () => { drag = true; $$("#fCur").textContent = fmt(sk.value / 1000 * pos()[1]); });
