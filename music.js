@@ -12,6 +12,7 @@
   // 範例：{ id: "focus1", title: "專注鋼琴", artist: "自己", src: "music/focus1.mp3", cover: "music/focus1.jpg" }
   // id 不可重複；artist、cover 可省略
   const LOCAL_TRACKS = [
+     { id: "focus1", title: "NO", artist: "NO", src: "music/focus1.mp3", cover: "music/focus1.jpg" },
   ];
 
   const PL_KEY = "music_playlists", PREF_KEY = "music_prefs";
