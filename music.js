@@ -13,7 +13,7 @@
   // id 不可重複；artist、cover 可省略
   const LOCAL_TRACKS = [
   { id: "thunder1", title: "Thunder and Lightning", artist: "Luminewave", src: "music/luminewave-thunder-and-lightning-commercial-version-637008.mp3", cover: "music/thunder1.jpg" },
-  { id: "thunder2", title: "Dominator", artist: "AudioAtlant", src: "music/audioatlant-dominator-action-countdown-trailer-main-554635.mp3", cover: "music/thunder2.jpg" },
+  { id: "thunder2", title: "Dominator", artist: "AudioAtlant", src: "music/audioatlant-dominator-action-countdown-trailer-main-554635.mp3", cover: "music/thunder2.png" },
 ];
 
   const PL_KEY = "music_playlists", PREF_KEY = "music_prefs";
