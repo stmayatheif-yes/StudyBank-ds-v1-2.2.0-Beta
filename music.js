@@ -471,8 +471,9 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
   function startSleep(m) { sleepEnd = Date.now() + m * 60000; toast("將於 " + m + " 分鐘後暫停播放"); }
 
   $$("#fSet").onclick = openSet;
-  $$("#setClose").onclick = closeSet; $$("#fnClose").onclick = closeSet;
-  setWrap.onclick = e => { if (e.target.id === "mpSetWrap") closeSet(); };
+  $$("#setClose").onclick = closeSet;
+  $$("#fnClose").onclick = () => { fnSheet.classList.remove("open"); fn = null; };
+  setWrap.onclick = e => { if (e.target.id === "mpSetWrap") { if (fnSheet.classList.contains("open")) { fnSheet.classList.remove("open"); fn = null; } else closeSet(); } };
   $$("#mpSetList").onclick = e => {
     const r = e.target.closest("[data-m]"); if (!r) return;
     if (r.dataset.m === "like") toggleLike(); else { fn = r.dataset.m; renderFn(); fnSheet.classList.add("open"); }
