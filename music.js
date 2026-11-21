@@ -38,8 +38,12 @@
 
   // ===== 播放狀態 =====
   let queue = lib(prefs.src), idx = 0, cur = queue[0] || null, qLabel = libLabel(prefs.src);
-  let playing = false, loadedKey = null, drag = false, mode = Math.min(3, Math.max(0, prefs.mode | 0)), sleepI = 0, sleepEnd = 0;
-  const SLEEP = [15, 30, 60], MODES = ["順序循環", "隨機播放", "單曲循環", "播完停止", "睡眠計時"];
+  let playing = false, loadedKey = null, drag = false, plays = 1, sleepEnd = 0;
+  let mode = [0, 1, 2, 3, 4].indexOf(prefs.pm) >= 0 ? prefs.pm : 2;          // 預設：列表循環
+  let loopMax = Math.max(0, Math.min(99, prefs.loop | 0));                    // 0 = 無限
+  let rate = Math.min(2, Math.max(0.1, Math.round((+prefs.rate || 1) * 10) / 10));
+  let vol = prefs.vol == null ? 100 : Math.max(0, Math.min(100, +prefs.vol | 0));
+  const MODES = ["隨機", "順序", "列表循環", "單曲循環", "單曲播畢結束"];
   const audio = new Audio(); audio.preload = "none";
 
   // ===== 圖示 =====
@@ -55,7 +59,13 @@
     list: `<path ${S} d="M4 6h16M4 12h16M4 18h10"/>`, x: `<path ${S} d="M6 6l12 12M18 6L6 18"/>`,
     rep1: `<path ${S} d="M17 2l4 4-4 4M3 11V9a3 3 0 013-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 01-3 3H3"/><text x="12" y="15.5" font-size="9" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">1</text>`,
     stop: `<path ${S} d="M4 12h11M11 7l5 5-5 5M20 5v14"/>`,
-    moon: `<path ${S} d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>`
+    seq: `<path ${S} d="M4 7h11M4 12h11M4 17h6M18 8v8M15 13l3 3 3-3"/>`,
+    eq: `<path ${S} d="M5 9v6M9 5v14M13 8v8M17 4v16M21 10v4"/>`,
+    clock: `<circle ${S} cx="12" cy="13" r="8"/><path ${S} d="M12 9v4l2.5 2M9 2h6"/>`,
+    speed: '<path d="M3 5v14l9-7zM12 5v14l9-7z"/>',
+    vol: `<path d="M4 9v6h4l5 4V5L8 9z"/><path ${S} d="M16 9a4 4 0 010 6M18.5 6.5a8 8 0 010 11"/>`,
+    heart: `<path ${S} d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>`,
+    heartOn: `<path ${S} style="fill:var(--ac);stroke:var(--ac)" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>`
   };
   const ic = (n, s) => `<svg viewBox="0 0 24 24" width="${s || 24}" height="${s || 24}" fill="currentColor">${ICON[n]}</svg>`;
 
@@ -115,6 +125,21 @@ html[data-style="glass"] #mpRoot #mpBar,html[data-style="glass"] #mpRoot .mp-she
 ^.mp-sp{width:48px}
 ^.mp-mw{position:relative;display:flex;flex-direction:column;align-items:center;width:48px}
 ^.mp-mw small{position:absolute;top:100%;margin-top:-8px;font-size:.68rem;opacity:.75;white-space:nowrap}
+^.mp-stack{position:relative;width:min(640px,100%)}
+^.mp-stack .mp-sheet{width:100%;height:auto;max-height:82vh;overflow-y:auto}
+^.mp-stack .mp-fn{position:absolute;left:0;right:0;bottom:0;max-height:72vh;box-shadow:0 -6px 24px rgba(0,0,0,.35)}
+^.mp-rw-head{display:flex;align-items:center;gap:14px;padding:6px 4px 12px;border-bottom:1px solid var(--bd)}
+^.mp-rw{display:flex;align-items:center;gap:18px;padding:14px 6px;cursor:pointer}
+^.mp-rw i{width:28px;display:flex;justify-content:center;font-style:normal}
+^.mp-rw span{flex:1}^.mp-rw em{font-style:normal;opacity:.6;font-size:.9rem}
+^.mp-val{font-size:2rem;font-weight:700;text-align:center;margin:10px 0}
+^.mp-step{display:flex;align-items:center;justify-content:center;gap:24px;margin:14px 0}
+^.mp-step b{font-size:1.5rem;min-width:90px;text-align:center}
+^.mp-sb{width:48px;height:48px;border-radius:50%;border:1px solid var(--bd)!important;font-size:1.5rem;display:flex;align-items:center;justify-content:center}
+^.mp-chips{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+^.mp-chips button{padding:8px 14px;border:1px solid var(--bd)!important;border-radius:999px}
+^#mpFnBody .mp-btn{display:block;margin:12px auto 0}
+^.mp-wrap .mp-fn:not(.open){transform:translateY(100%);visibility:hidden}
 main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoot #(mp\w+)/g, "#$1");
   const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
@@ -138,11 +163,11 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
     <button class="mp-ib" id="fAdd" aria-label="加入播放清單">${ic("plus", 32)}</button></div>
   <div><input type="range" id="fSeek" min="0" max="1000" value="0"><div class="mp-time"><span id="fCur">0:00</span><span id="fDur">0:00</span></div></div>
   <div class="mp-ctrl">
-    <span class="mp-sp"></span>
+    <div class="mp-mw"><button class="mp-ib" id="fSet" aria-label="播放設定">${ic("eq")}</button><small>播放設定</small></div>
     <button class="mp-ib" id="fPrev" aria-label="上一首">${ic("prev", 32)}</button>
     <button class="mp-ib big" id="fPlay" aria-label="播放／暫停"></button>
     <button class="mp-ib" id="fNext" aria-label="下一首">${ic("next", 32)}</button>
-    <div class="mp-mw"><button class="mp-ib" id="fMode" aria-label="切換播放模式"></button><small id="fModeL"></small></div>
+    <div class="mp-mw"><button class="mp-ib on" id="fMode" aria-label="切換播放模式"></button><small id="fModeL"></small></div>
   </div>
 </div></div>
 
@@ -150,6 +175,16 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
   <div class="mp-sh-head"><button id="shClose">關閉</button><b id="shTitle"></b><button id="shNew">新增清單</button></div>
   <div class="mp-tabs" id="shTabs"><button data-t="add">加入這首</button><button data-t="lists">我的清單</button><button data-t="yt">YouTube 連結</button></div>
   <div id="mpShBody"></div>
+</div></div>
+<div class="mp-wrap" id="mpSetWrap"><div class="mp-stack">
+  <div class="mp-sheet" id="mpSetMenu">
+    <div class="mp-sh-head"><span style="width:48px"></span><b>播放設定</b><button id="setClose">關閉</button></div>
+    <div id="mpSetList"></div>
+  </div>
+  <div class="mp-sheet mp-fn" id="mpSetFn">
+    <div class="mp-sh-head"><span style="width:48px"></span><b id="fnTitle"></b><button id="fnClose">關閉</button></div>
+    <div id="mpFnBody"></div>
+  </div>
 </div></div>
 <div id="mpYTwrap"><div id="mpYTbox"></div></div>
 <div id="mpToast"></div>`;
@@ -170,10 +205,10 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
       ytp = new YT.Player("mpYTbox", {
         width: 200, height: 200, playerVars: { playsinline: 1, controls: 0, disablekb: 1, rel: 0 },
         events: {
-          onReady: () => { ytReady = true; if (pendingVid) { ytp.loadVideoById(pendingVid); pendingVid = null; } },
+          onReady: () => { ytReady = true; if (pendingVid) { ytp.loadVideoById(pendingVid); pendingVid = null; } applyYT(); },
           onStateChange: e => {
             if (!cur || cur.src !== "yt") return;
-            if (e.data === 1) { playing = true; errN = 0; fixYTInfo(); ui(); }
+            if (e.data === 1) { playing = true; errN = 0; applyYT(); fixYTInfo(); ui(); }
             else if (e.data === 2) { playing = false; ui(); }
             else if (e.data === 0) next(true);
           },
@@ -197,12 +232,12 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
 
   // ===== 播放引擎 =====
   function stopAll() { audio.pause(); if (ytReady) try { ytp.pauseVideo(); } catch (e) {} }
-  function playIdx(i) {
+  function playIdx(i, again) {
     if (!queue.length) return;
-    idx = (i + queue.length) % queue.length; cur = queue[idx];
+    idx = (i + queue.length) % queue.length; cur = queue[idx]; plays = again ? plays + 1 : 1;
     stopAll(); loadedKey = cur.key; playing = true;
-    if (cur.src === "yt") { needYT(); if (ytReady) ytp.loadVideoById(cur.vid); else pendingVid = cur.vid; }
-    else { audio.src = cur.url; audio.play().catch(() => { playing = false; ui(); toast("無法播放這個音檔，請確認檔案路徑"); }); }
+    if (cur.src === "yt") { needYT(); if (ytReady) { ytp.loadVideoById(cur.vid); applyYT(); } else pendingVid = cur.vid; }
+    else { audio.src = cur.url; applyAudio(); audio.play().catch(() => { playing = false; ui(); toast("無法播放這個音檔，請確認檔案路徑"); }); }
     ui();
   }
   function toggle() {
@@ -211,11 +246,17 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
     if (cur.src === "yt") { if (ytReady) (playing ? ytp.pauseVideo() : ytp.playVideo()); }
     else (audio.paused ? audio.play().catch(() => {}) : audio.pause());
   }
+  function applyAudio() { audio.volume = vol / 100; audio.defaultPlaybackRate = audio.playbackRate = rate; }
+  function applyYT() { if (!ytReady) return; try { ytp.setVolume(vol); ytp.setPlaybackRate(rate); } catch (e) {} }
+  function haltAt(i) { stopAll(); playing = false; loadedKey = null; idx = i; cur = queue[i]; ui(); }
   function next(auto) {
     if (!queue.length) return;
-    if (auto && mode === 2) return playIdx(idx);
-    if (mode === 1 && queue.length > 1) { let j; do { j = Math.random() * queue.length | 0; } while (j === idx); return playIdx(j); }
-    if (auto && mode === 3 && idx === queue.length - 1) { stopAll(); playing = false; loadedKey = null; idx = 0; cur = queue[0]; ui(); return; }
+    if (auto) {
+      if (mode === 4) return haltAt(idx);                                        // 單曲播畢結束
+      if (mode === 3 && (!loopMax || plays < loopMax)) return playIdx(idx, true); // 單曲循環（可限次數）
+      if (mode === 1 && idx === queue.length - 1) return haltAt(0);              // 順序：最後一首播完就停
+    }
+    if (mode === 0 && queue.length > 1) { let j; do { j = Math.random() * queue.length | 0; } while (j === idx); return playIdx(j); }
     playIdx(idx + 1);
   }
   const pos = () => {
@@ -238,11 +279,12 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
   audio.addEventListener("error", () => { if (cur && cur.src === "local" && audio.src) { playing = false; ui(); toast("找不到音檔：" + cur.url); } });
 
   // ===== 畫面更新 =====
+  const remain = () => fmt(Math.max(0, (sleepEnd - Date.now()) / 1000));
   function modeUI() {
-    const b = $$("#fMode"); b.innerHTML = ic(["rep", "shuf", "rep1", "stop", "moon"][mode]); b.classList.toggle("on", mode > 0);
-    $$("#fModeL").textContent = mode === 4 ? "睡眠 " + fmt(Math.max(0, (sleepEnd - Date.now()) / 1000)) : MODES[mode];
+    $$("#fMode").innerHTML = ic(["shuf", "seq", "rep", "rep1", "stop"][mode]);
+    $$("#fModeL").textContent = MODES[mode] + (mode === 3 && loopMax ? " ×" + loopMax : "");
   }
-  function endSleep() { mode = 0; sleepEnd = 0; prefs.mode = 0; save(PREF_KEY, prefs); if (playing) toggle(); toast("睡眠計時結束，已暫停"); ui(); }
+  function endSleep() { sleepEnd = 0; if (playing) toggle(); toast("定時關閉：已暫停播放"); ui(); }
   function ui() {
     const t = cur ? cur.title : (prefs.src === "yt" ? "尚未加入 YouTube 歌曲" : "尚未加入本地音樂");
     const a = cur ? (cur.artist || (cur.src === "yt" ? "YouTube" : "")) : "點 ∧ 展開，加入音樂";
@@ -254,13 +296,14 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
     const act = cur ? cur.src : prefs.src;
     root.querySelectorAll(".mp-seg button").forEach(b => b.classList.toggle("on", b.dataset.s === act));
     modeUI();
+    if ($$("#mpSetWrap").classList.contains("open")) renderMenu();
     if ("mediaSession" in navigator && cur) {
       try { navigator.mediaSession.metadata = new MediaMetadata({ title: cur.title, artist: cur.artist || "", artwork: cur.cover ? [{ src: new URL(cur.cover, location.href).href }] : [] }); } catch (e) {}
     }
     if ($$("#mpWrap").classList.contains("open")) renderSheet();
   }
   setInterval(() => {
-    if (mode === 4) { if (Date.now() >= sleepEnd) endSleep(); else modeUI(); }
+    if (sleepEnd) { if (Date.now() >= sleepEnd) endSleep(); else { const a = $$("#mvTimer"), b = $$("#fnRemain"); if (a) a.textContent = remain(); if (b) b.textContent = remain(); } }
     if (drag) return;
     const p = pos(), r = p[1] ? p[0] / p[1] : 0;
     $$("#bProg").style.width = r * 100 + "%"; $$("#fSeek").value = r * 1000;
@@ -268,25 +311,22 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
   }, 500);
 
   // ===== 主要按鈕 =====
-  const openFull = o => { $$("#mpFull").classList.toggle("open", o); document.body.style.overflow = o ? "hidden" : ""; };
+  const openFull = o => { $$("#mpFull").classList.toggle("open", o); document.body.style.overflow = o ? "hidden" : ""; if (!o) closeSet(); };
   $$("#mpBar").onclick = e => { if (!e.target.closest("button") || e.target.closest("#bUp")) openFull(true); };
   $$("#bPlay").onclick = toggle; $$("#fPlay").onclick = toggle;
   $$("#fDown").onclick = () => openFull(false);
   $$("#fNext").onclick = () => next(); $$("#fPrev").onclick = prev;
   $$("#fMode").onclick = () => {
-    if (mode === 4 && sleepI < SLEEP.length - 1) sleepI++;
-    else { mode = (mode + 1) % 5; sleepI = 0; }
-    if (mode === 4) sleepEnd = Date.now() + SLEEP[sleepI] * 60000; else sleepEnd = 0;
-    prefs.mode = mode < 4 ? mode : 0; save(PREF_KEY, prefs);
-    toast(mode === 4 ? "睡眠計時：" + SLEEP[sleepI] + " 分鐘後暫停" : MODES[mode] + (mode === 3 ? "（整份播完後停止）" : ""));
+    mode = (mode + 1) % 5; prefs.pm = mode; save(PREF_KEY, prefs);
+    toast(MODES[mode] + ["", "：播到清單最後一首後停止", "：重複播放整份清單", loopMax ? "：每首重複播放 " + loopMax + " 次" : "：重複播放目前歌曲", "：播完目前這首就停止"][mode]);
     ui();
   };
-  document.addEventListener("visibilitychange", () => { if (mode === 4 && Date.now() >= sleepEnd) endSleep(); });
+  document.addEventListener("visibilitychange", () => { if (sleepEnd && Date.now() >= sleepEnd) endSleep(); });
   root.querySelectorAll(".mp-seg button").forEach(b => b.onclick = () => setSource(b.dataset.s));
   const sk = $$("#fSeek");
   sk.addEventListener("input", () => { drag = true; $$("#fCur").textContent = fmt(sk.value / 1000 * pos()[1]); });
   sk.addEventListener("change", () => { seekTo(sk.value / 1000 * pos()[1]); drag = false; });
-  document.addEventListener("keydown", e => { if (e.key === "Escape") { if ($$("#mpWrap").classList.contains("open")) openSheet(false); else openFull(false); } });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") { if ($$("#mpSetWrap").classList.contains("open")) closeSet(); else if ($$("#mpWrap").classList.contains("open")) openSheet(false); else openFull(false); } });
   if ("mediaSession" in navigator) { try {
     navigator.mediaSession.setActionHandler("play", toggle); navigator.mediaSession.setActionHandler("pause", toggle);
     navigator.mediaSession.setActionHandler("nexttrack", () => next()); navigator.mediaSession.setActionHandler("previoustrack", prev);
@@ -376,5 +416,82 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
     if (e.target.id === "mpYtUrl") addYT(); else if (e.target.id === "mpNewName") $$("#mpShBody").querySelector('[data-a="newok"]').click();
   });
 
+
+  // ===== 播放設定（只在展開頁） =====
+  const setWrap = $$("#mpSetWrap"), fnSheet = $$("#mpSetFn");
+  let fn = null;
+  const likedList = () => store.lists.find(l => l.id === "liked");
+  const isLiked = () => !!(cur && likedList().items.some(x => x.key === cur.key));
+  function openSet() { renderMenu(); setWrap.classList.add("open"); }
+  function closeSet() { setWrap.classList.remove("open"); fnSheet.classList.remove("open"); fn = null; }
+  function renderMenu() {
+    const L = isLiked();
+    const rows = [["loop", "rep1", "設置循環次數", loopMax ? loopMax + " 次" : "無限"], ["timer", "clock", "定時關閉", sleepEnd ? remain() : "未開啟"],
+      ["speed", "speed", "倍速", rate.toFixed(1) + "x"], ["vol", "vol", "調節音量", vol], ["like", L ? "heartOn" : "heart", "收藏", L ? "已收藏" : ""]];
+    $$("#mpSetList").innerHTML = `<div class="mp-rw-head"><div class="mp-cv" style="${cur && cur.cover ? `background-image:url('${esc(cur.cover)}')` : ""}">${cur && cur.cover ? "" : "♪"}</div>
+      <div class="mp-meta"><div class="mp-t">${esc(cur ? cur.title : "尚未播放")}</div><div class="mp-s">${esc(cur ? cur.artist || "" : "")}</div></div></div>` +
+      rows.map(r => `<div class="mp-rw" data-m="${r[0]}"><i>${ic(r[1], 26)}</i><span>${r[2]}</span><em${r[0] === "timer" ? ' id="mvTimer"' : ""}>${r[3]}</em></div>`).join("");
+  }
+  function toggleLike() {
+    if (!cur) return toast("尚未播放歌曲");
+    const l = likedList(), k = l.items.findIndex(x => x.key === cur.key);
+    if (k >= 0) { l.items.splice(k, 1); toast("已取消收藏"); } else { l.items.push(snap(cur)); toast("已加入「已按讚的歌曲」"); }
+    persist(); renderMenu(); if ($$("#mpWrap").classList.contains("open")) renderSheet();
+  }
+  function renderFn() {
+    const T = { loop: "設置循環次數", timer: "定時關閉", speed: "倍速", vol: "調節音量" };
+    $$("#fnTitle").textContent = T[fn]; let h = "";
+    if (fn === "loop") {
+      h = `<p class="mp-hint">在「單曲循環」模式下，每首歌重複播放的次數；播完指定次數後會接著播下一首。</p>
+        <div class="mp-step"><button class="mp-sb" data-f="lm-">−</button><b>${loopMax ? loopMax + " 次" : "無限"}</b><button class="mp-sb" data-f="lm+">＋</button></div>`;
+      if (mode !== 3) h += `<p class="mp-hint">目前不是單曲循環模式，切換後才會生效。</p><button class="mp-btn" data-f="tomode">切換為單曲循環</button>`;
+    } else if (fn === "timer") {
+      h = `<p class="mp-hint">${sleepEnd ? `剩餘 <b id="fnRemain">${remain()}</b>，時間到會自動暫停。` : "選擇播放多久後自動暫停。"}</p>
+        <div class="mp-chips">${[15, 30, 45, 60, 90].map(m => `<button data-f="sl" data-m="${m}">${m} 分鐘</button>`).join("")}</div>
+        <div class="mp-new"><input id="slCustom" type="number" min="1" max="720" inputmode="numeric" placeholder="自訂分鐘數（1–720）"><button class="mp-btn" data-f="slc">開始</button></div>` +
+        (sleepEnd ? `<button class="mp-btn" data-f="slx">取消定時</button>` : "");
+    } else if (fn === "speed") {
+      h = `<div class="mp-val" id="fnVal">${rate.toFixed(1)}x</div><input type="range" id="rngRate" min="1" max="20" step="1" value="${Math.round(rate * 10)}">
+        <div class="mp-time"><span>0.1x</span><span>2.0x</span></div><button class="mp-btn" data-f="rate1">重設為 1.0x</button>
+        <p class="mp-hint">YouTube 音源只有固定檔位（0.25～2 倍），會自動套用最接近的倍速。</p>`;
+    } else {
+      h = `<div class="mp-val" id="fnVal">${vol}</div><input type="range" id="rngVol" min="0" max="100" step="1" value="${vol}">
+        <div class="mp-time"><span>0</span><span>100</span></div><p class="mp-hint">iPhone／iPad 的瀏覽器無法調整網頁音量，請改用手機音量鍵。</p>`;
+    }
+    $$("#mpFnBody").innerHTML = h;
+  }
+  function setRate(r) {
+    rate = Math.min(2, Math.max(0.1, Math.round(r * 10) / 10)); applyAudio(); applyYT(); prefs.rate = rate; save(PREF_KEY, prefs);
+    const v = $$("#fnVal"); if (v) v.textContent = rate.toFixed(1) + "x"; const g = $$("#rngRate"); if (g) g.value = Math.round(rate * 10); renderMenu();
+  }
+  function setVol(v) {
+    vol = Math.max(0, Math.min(100, v | 0)); applyAudio(); applyYT(); prefs.vol = vol; save(PREF_KEY, prefs);
+    const e = $$("#fnVal"); if (e) e.textContent = vol; renderMenu();
+  }
+  function startSleep(m) { sleepEnd = Date.now() + m * 60000; toast("將於 " + m + " 分鐘後暫停播放"); }
+
+  $$("#fSet").onclick = openSet;
+  $$("#setClose").onclick = closeSet; $$("#fnClose").onclick = closeSet;
+  setWrap.onclick = e => { if (e.target.id === "mpSetWrap") closeSet(); };
+  $$("#mpSetList").onclick = e => {
+    const r = e.target.closest("[data-m]"); if (!r) return;
+    if (r.dataset.m === "like") toggleLike(); else { fn = r.dataset.m; renderFn(); fnSheet.classList.add("open"); }
+  };
+  $$("#mpFnBody").onclick = e => {
+    const b = e.target.closest("[data-f]"); if (!b) return; const f = b.dataset.f;
+    if (f === "lm+" || f === "lm-") {
+      loopMax = f === "lm+" ? (loopMax === 0 ? 2 : Math.min(99, loopMax + 1)) : (loopMax <= 2 ? 0 : loopMax - 1);
+      prefs.loop = loopMax; save(PREF_KEY, prefs); modeUI(); renderFn(); renderMenu();
+    } else if (f === "tomode") { mode = 3; prefs.pm = 3; save(PREF_KEY, prefs); ui(); renderFn(); toast("單曲循環"); }
+    else if (f === "sl") { startSleep(+b.dataset.m); renderFn(); renderMenu(); }
+    else if (f === "slc") { const m = Math.round(+$$("#slCustom").value); if (!(m >= 1 && m <= 720)) return toast("請輸入 1 到 720 的分鐘數"); startSleep(m); renderFn(); renderMenu(); }
+    else if (f === "slx") { sleepEnd = 0; toast("已取消定時"); renderFn(); renderMenu(); }
+    else if (f === "rate1") setRate(1);
+  };
+  $$("#mpFnBody").addEventListener("input", e => {
+    if (e.target.id === "rngRate") setRate(e.target.value / 10); else if (e.target.id === "rngVol") setVol(+e.target.value);
+  });
+
+  applyAudio();
   ui();
 })();
