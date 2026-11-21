@@ -75,7 +75,7 @@
 ^.mp-seg{display:flex;background:var(--card);border:1px solid var(--bd);border-radius:999px;padding:3px}
 ^.mp-seg button{flex:1;text-align:center;padding:8px;border-radius:999px;font-size:.95rem}
 ^.mp-seg button.on{background:var(--ac);color:#fff}
-^.mp-art{width:min(100%,44vh);aspect-ratio:1;margin:0 auto;border-radius:14px;font-size:64px;box-shadow:var(--shadow)}
+^.mp-art{width:min(100%,44vh);aspect-ratio:1;height:auto;margin:0 auto;border-radius:14px;font-size:64px;box-shadow:var(--shadow)}
 ^.mp-plbtn{display:flex;align-items:center;gap:8px;align-self:flex-start;padding:8px 14px;border:1px solid var(--bd)!important;border-radius:8px;background:var(--card)!important;font-size:.9rem}
 ^.mp-info{display:flex;align-items:center;gap:12px}
 ^.mp-info>div{flex:1;min-width:0}
