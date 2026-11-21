@@ -26,7 +26,7 @@ function parseOr(raw, fallback) {
 }
 
 // 讀取本機目前狀態（records = 各科刷題紀錄；settings = 外觀設定與自定義顏色）
-const TOOL_SYNC_KEYS = ["tools_attempts", "tools_tests", "tools_first_ts", "tools_first_en", "tools_baseline", "tools_baseline_en"];
+const TOOL_SYNC_KEYS = ["tools_attempts", "tools_tests", "tools_first_ts", "tools_first_en", "tools_baseline", "tools_baseline_en", "music_playlists"];
 
 function readLocal(st) {
   const records = {};
