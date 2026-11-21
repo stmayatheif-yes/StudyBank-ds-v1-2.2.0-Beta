@@ -9,8 +9,8 @@
   "use strict";
 
   // ===== ① 本地音樂清單（自己編輯）=====
-  // 範例：{ id: "focus1", title: "專注鋼琴", artist: "自己", src: "music/focus1.mp3", cover: "music/focus1.jpg" }
-  // id 不可重複；artist、cover 可省略
+  // 範例：{ id: "focus1", title: "專注鋼琴", artist: "自己", album: "讀書專輯", genre: "輕音樂", src: "music/focus1.mp3", cover: "music/focus1.jpg" }
+  // id 不可重複；artist、album、genre、cover 可省略（沒填的會歸到「未分類」）
   const LOCAL_TRACKS = [
      { id: "thunder1", title: "Thunder and Lightning", artist: "Luminewave", src: "music/luminewave-thunder-and-lightning-commercial-version-637008.mp3", cover: "music/thunder1.jpg" },
      { id: "thunder2", title: "Dominator", artist: "AudioAtlant", src: "music/audioatlant-dominator-action-countdown-trailer-main-554635.mp3", cover: "music/thunder2.png" },
@@ -30,10 +30,12 @@
   if (!Array.isArray(store.yt)) store.yt = [];
   const prefs = Object.assign({ src: "local" }, load(PREF_KEY, {}));
   const persist = () => save(PL_KEY, store);
+  let recent = load("music_recent", []); if (!Array.isArray(recent)) recent = [];
+  const pushRecent = t => { recent = [snap(t)].concat(recent.filter(x => x.key !== t.key)).slice(0, 20); save("music_recent", recent); };
 
-  const localLib = () => LOCAL_TRACKS.map(t => ({ key: "l:" + t.id, src: "local", url: t.src, title: t.title, artist: t.artist || "", cover: t.cover || "" }));
+  const localLib = () => LOCAL_TRACKS.map(t => ({ key: "l:" + t.id, src: "local", url: t.src, title: t.title, artist: t.artist || "", album: t.album || "", genre: t.genre || "", cover: t.cover || "" }));
   const lib = s => s === "yt" ? store.yt.slice() : localLib();
-  const snap = t => ({ key: t.key, src: t.src, url: t.url, vid: t.vid, title: t.title, artist: t.artist, cover: t.cover });
+  const snap = t => ({ key: t.key, src: t.src, url: t.url, vid: t.vid, title: t.title, artist: t.artist, album: t.album, genre: t.genre, cover: t.cover });
   const libLabel = s => s === "yt" ? "YouTube" : "本地音源";
 
   // ===== 播放狀態 =====
@@ -59,6 +61,7 @@
     list: `<path ${S} d="M4 6h16M4 12h16M4 18h10"/>`, x: `<path ${S} d="M6 6l12 12M18 6L6 18"/>`,
     rep1: `<path ${S} d="M17 2l4 4-4 4M3 11V9a3 3 0 013-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 01-3 3H3"/><text x="12" y="15.5" font-size="9" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">1</text>`,
     stop: `<path ${S} d="M4 12h11M11 7l5 5-5 5M20 5v14"/>`,
+    pen: `<path ${S} d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/>`,
     seq: `<path ${S} d="M4 7h11M4 12h11M4 17h6M18 8v8M15 13l3 3 3-3"/>`,
     eq: `<path ${S} d="M5 9v6M9 5v14M13 8v8M17 4v16M21 10v4"/>`,
     clock: `<circle ${S} cx="12" cy="13" r="8"/><path ${S} d="M12 9v4l2.5 2M9 2h6"/>`,
@@ -140,6 +143,33 @@ html[data-style="glass"] #mpRoot #mpBar,html[data-style="glass"] #mpRoot .mp-she
 ^.mp-chips button{padding:8px 14px;border:1px solid var(--bd)!important;border-radius:999px}
 ^#mpFnBody .mp-btn{display:block;margin:12px auto 0}
 ^.mp-wrap .mp-fn:not(.open){transform:translateY(100%);visibility:hidden}
+^.mp-top{display:grid;grid-template-columns:1fr auto 1fr}
+^.mp-top .mp-ib{justify-self:start}
+^.mp-ovbtn{justify-self:end;padding:6px 12px;border:1px solid var(--bd)!important;border-radius:999px;background:var(--card)!important;font-size:.85rem}
+^#mpOv{position:fixed;inset:0;z-index:1150;display:flex;justify-content:center;background:linear-gradient(var(--bg-angle),var(--bg-color-1),var(--bg-color-2));transform:translateY(100%);visibility:hidden;transition:transform .3s,visibility .3s;color:var(--text-color)}
+^#mpOv.open{transform:none;visibility:visible}
+^.mp-ovbox{width:min(640px,100%);height:100%;display:flex;flex-direction:column;gap:10px;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 0;box-sizing:border-box}
+^.mp-ovhead{display:flex;justify-content:space-between;align-items:center;font-size:1.25rem}
+^#ovScroll{flex:1;min-height:0;overflow-y:auto;padding-bottom:12px}
+^#ovQ{width:100%;box-sizing:border-box;margin:14px 0 0}
+^.mp-ovnow{display:flex;align-items:center;gap:12px;padding:8px 4px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--bd);cursor:pointer}
+^.mp-h{margin:18px 0 8px;font-size:1rem}
+^.mp-hs{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;scroll-snap-type:x proximity}
+^.mp-card{flex:none;width:92px;scroll-snap-align:start;cursor:pointer}
+^.mp-card .mp-cv{width:92px;height:92px;border-radius:10px;font-size:32px}
+^.mp-card .mp-s{margin-top:4px;opacity:.85}
+^.mp-card.now .mp-cv{outline:2px solid var(--ac)}
+^.mp-gc{flex:none;width:130px;height:78px;border-radius:12px;color:#fff;padding:10px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:flex-end;cursor:pointer;scroll-snap-align:start}
+^.mp-gc.on{outline:3px solid var(--text-color)}
+^.mp-gc small{opacity:.85}
+^.mp-grp summary{display:flex;justify-content:space-between;padding:12px 4px;border-bottom:1px solid var(--bd);cursor:pointer;list-style:none}
+^.mp-grp summary::-webkit-details-marker{display:none}
+^.mp-grp em{font-style:normal;opacity:.6}
+^.mp-grp>.mp-li{padding-left:14px}
+^.mp-li.now .mp-t::before{content:"♪ ";color:var(--ac)}
+^.mp-ed{height:auto;max-height:80vh;overflow-y:auto}
+^.mp-ed label{display:block;font-size:.85rem;opacity:.7;margin:10px 0 4px}
+^.mp-ed input{width:100%;box-sizing:border-box;margin:0}
 main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoot #(mp\w+)/g, "#$1");
   const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
@@ -155,7 +185,7 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
 
 <div id="mpFull"><div class="mp-col">
   <div class="mp-top"><button class="mp-ib" id="fDown" aria-label="收合">${ic("down")}</button>
-    <div><small>播放自</small><b id="fQ"></b></div><span style="width:40px"></span></div>
+    <div><small>播放自</small><b id="fQ"></b></div><button class="mp-ovbtn" id="fOv">音樂總覽</button></div>
   <div class="mp-seg"><button data-s="local">本地音源</button><button data-s="yt">YouTube</button></div>
   <div class="mp-cv mp-art" id="fCv"></div>
   <button class="mp-plbtn" id="fList">${ic("list", 18)}<span>查看／建立播放清單</span></button>
@@ -169,6 +199,14 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
     <button class="mp-ib" id="fNext" aria-label="下一首">${ic("next", 32)}</button>
     <div class="mp-mw"><button class="mp-ib on" id="fMode" aria-label="切換播放模式"></button><small id="fModeL"></small></div>
   </div>
+</div></div>
+
+<div id="mpOv"><div class="mp-ovbox">
+  <div class="mp-ovhead"><b>音樂總覽</b><button class="mp-ib" id="ovClose" aria-label="關閉總覽">${ic("x")}</button></div>
+  <div class="mp-seg" id="ovSeg"><button data-s="local">本地音樂</button><button data-s="yt">YouTube 音樂</button></div>
+  <div class="mp-new" id="ovYtAdd" style="display:none"><input id="ovYtUrl" placeholder="貼上 YouTube 影片連結" inputmode="url"><button class="mp-btn" id="ovYtBtn">新增</button></div>
+  <div id="ovScroll"><div id="ovRecent"></div><input id="ovQ" placeholder="搜尋歌名、歌手、專輯"><div id="ovSections"></div></div>
+  <div class="mp-ovnow" id="ovNow"><div class="mp-cv" id="oCv"></div><div class="mp-meta"><div class="mp-t" id="oT"></div></div><button class="mp-ib" id="oPlay" aria-label="播放／暫停"></button></div>
 </div></div>
 
 <div class="mp-wrap" id="mpWrap"><div class="mp-sheet">
@@ -185,6 +223,11 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
     <div class="mp-sh-head"><span style="width:48px"></span><b id="fnTitle"></b><button id="fnClose">關閉</button></div>
     <div id="mpFnBody"></div>
   </div>
+</div></div>
+<div class="mp-wrap" id="mpEdit"><div class="mp-sheet mp-ed">
+  <div class="mp-sh-head"><button id="edCancel">取消</button><b>編輯歌曲資訊</b><button id="edSave">儲存</button></div>
+  <label>歌名</label><input id="edT"><label>歌手</label><input id="edA"><label>專輯</label><input id="edB">
+  <label>類型</label><input id="edG" list="mpGenres" placeholder="例如：搖滾、抒情"><datalist id="mpGenres"></datalist>
 </div></div>
 <div id="mpYTwrap"><div id="mpYTbox"></div></div>
 <div id="mpToast"></div>`;
@@ -234,7 +277,7 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
   function stopAll() { audio.pause(); if (ytReady) try { ytp.pauseVideo(); } catch (e) {} }
   function playIdx(i, again) {
     if (!queue.length) return;
-    idx = (i + queue.length) % queue.length; cur = queue[idx]; plays = again ? plays + 1 : 1;
+    idx = (i + queue.length) % queue.length; cur = queue[idx]; plays = again ? plays + 1 : 1; if (!again) pushRecent(cur);
     stopAll(); loadedKey = cur.key; playing = true;
     if (cur.src === "yt") { needYT(); if (ytReady) { ytp.loadVideoById(cur.vid); applyYT(); } else pendingVid = cur.vid; }
     else { audio.src = cur.url; applyAudio(); audio.play().catch(() => { playing = false; ui(); toast("無法播放這個音檔，請確認檔案路徑"); }); }
@@ -291,10 +334,11 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
     const pi = ic(playing ? "pause" : "play", 26);
     $$("#bT").textContent = $$("#fT").textContent = t; $$("#bS").textContent = $$("#fS").textContent = a;
     cover($$("#bCv"), cur && cur.cover); cover($$("#fCv"), cur && cur.cover);
-    $$("#bPlay").innerHTML = $$("#fPlay").innerHTML = pi;
+    $$("#bPlay").innerHTML = $$("#fPlay").innerHTML = $$("#oPlay").innerHTML = pi;
+    $$("#oT").textContent = t; cover($$("#oCv"), cur && cur.cover); markNow();
     $$("#fQ").textContent = qLabel;
     const act = cur ? cur.src : prefs.src;
-    root.querySelectorAll(".mp-seg button").forEach(b => b.classList.toggle("on", b.dataset.s === act));
+    root.querySelectorAll("#mpFull .mp-seg button").forEach(b => b.classList.toggle("on", b.dataset.s === act));
     modeUI();
     if ($$("#mpSetWrap").classList.contains("open")) renderMenu();
     if ("mediaSession" in navigator && cur) {
@@ -311,7 +355,7 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
   }, 500);
 
   // ===== 主要按鈕 =====
-  const openFull = o => { $$("#mpFull").classList.toggle("open", o); document.body.style.overflow = o ? "hidden" : ""; if (!o) closeSet(); };
+  const openFull = o => { $$("#mpFull").classList.toggle("open", o); document.body.style.overflow = o ? "hidden" : ""; if (!o) { closeSet(); closeOv(); } };
   $$("#mpBar").onclick = e => { if (!e.target.closest("button") || e.target.closest("#bUp")) openFull(true); };
   $$("#bPlay").onclick = toggle; $$("#fPlay").onclick = toggle;
   $$("#fDown").onclick = () => openFull(false);
@@ -322,11 +366,11 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
     ui();
   };
   document.addEventListener("visibilitychange", () => { if (sleepEnd && Date.now() >= sleepEnd) endSleep(); });
-  root.querySelectorAll(".mp-seg button").forEach(b => b.onclick = () => setSource(b.dataset.s));
+  root.querySelectorAll("#mpFull .mp-seg button").forEach(b => b.onclick = () => setSource(b.dataset.s));
   const sk = $$("#fSeek");
   sk.addEventListener("input", () => { drag = true; $$("#fCur").textContent = fmt(sk.value / 1000 * pos()[1]); });
   sk.addEventListener("change", () => { seekTo(sk.value / 1000 * pos()[1]); drag = false; });
-  document.addEventListener("keydown", e => { if (e.key === "Escape") { if ($$("#mpSetWrap").classList.contains("open")) closeSet(); else if ($$("#mpWrap").classList.contains("open")) openSheet(false); else openFull(false); } });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") { if ($$("#mpSetWrap").classList.contains("open")) closeSet(); else if ($$("#mpEdit").classList.contains("open")) $$("#mpEdit").classList.remove("open"); else if ($$("#mpWrap").classList.contains("open")) openSheet(false); else if (ovIsOpen()) closeOv(); else openFull(false); } });
   if ("mediaSession" in navigator) { try {
     navigator.mediaSession.setActionHandler("play", toggle); navigator.mediaSession.setActionHandler("pause", toggle);
     navigator.mediaSession.setActionHandler("nexttrack", () => next()); navigator.mediaSession.setActionHandler("previoustrack", prev);
@@ -374,8 +418,8 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
     const scroll = $$("#mpShBody").scrollTop; $$("#mpShBody").innerHTML = h; $$("#mpShBody").scrollTop = scroll;
   }
 
-  async function addYT() {
-    const inp = $$("#mpYtUrl"), id = ytId(inp.value);
+  async function addYT(sel) {
+    const inp = $$(sel || "#mpYtUrl"), id = ytId(inp.value);
     if (!id) return toast("看不懂這個連結，請貼完整的 YouTube 影片網址");
     if (store.yt.some(t => t.vid === id)) return toast("這支影片已經在清單裡了");
     const t = { key: "y:" + id, src: "yt", vid: id, title: "YouTube " + id, artist: "", cover: "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg" };
@@ -385,7 +429,7 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
     } catch (e) {}
     store.yt.push(t); persist();
     if (qLabel === libLabel("yt")) { queue = lib("yt"); if (!cur) { idx = 0; cur = queue[0]; } }
-    toast("已新增"); ui(); renderSheet();
+    inp.value = ""; toast("已新增"); ui(); renderSheet(); if (ovIsOpen()) renderOv();
   }
 
   $$("#mpShBody").onclick = e => {
@@ -408,7 +452,7 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
     else if (a === "playall" && list) { if (list.items.length) { playList(list.items, 0, list.name); openSheet(false); } else toast("清單是空的"); }
     else if (a === "playin" && list) { playList(list.items, i, list.name); openSheet(false); }
     else if (a === "ytadd") addYT();
-    else if (a === "ytrm") { store.yt.splice(i, 1); persist(); if (qLabel === libLabel("yt")) { queue = lib("yt"); if (cur && !queue.some(x => x.key === cur.key)) { stopAll(); playing = false; loadedKey = null; idx = 0; cur = queue[0] || null; } else if (cur) idx = queue.findIndex(x => x.key === cur.key); } ui(); renderSheet(); }
+    else if (a === "ytrm") ytRemoveAt(i);
     else if (a === "ytplay") { prefs.src = "yt"; save(PREF_KEY, prefs); playList(store.yt, i, libLabel("yt")); openSheet(false); }
   };
   $$("#mpShBody").addEventListener("keydown", e => {
@@ -471,9 +515,8 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
   function startSleep(m) { sleepEnd = Date.now() + m * 60000; toast("將於 " + m + " 分鐘後暫停播放"); }
 
   $$("#fSet").onclick = openSet;
-  $$("#setClose").onclick = closeSet;
-  $$("#fnClose").onclick = () => { fnSheet.classList.remove("open"); fn = null; };
-  setWrap.onclick = e => { if (e.target.id === "mpSetWrap") { if (fnSheet.classList.contains("open")) { fnSheet.classList.remove("open"); fn = null; } else closeSet(); } };
+  $$("#setClose").onclick = closeSet; $$("#fnClose").onclick = closeSet;
+  setWrap.onclick = e => { if (e.target.id === "mpSetWrap") closeSet(); };
   $$("#mpSetList").onclick = e => {
     const r = e.target.closest("[data-m]"); if (!r) return;
     if (r.dataset.m === "like") toggleLike(); else { fn = r.dataset.m; renderFn(); fnSheet.classList.add("open"); }
@@ -492,6 +535,108 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
   $$("#mpFnBody").addEventListener("input", e => {
     if (e.target.id === "rngRate") setRate(e.target.value / 10); else if (e.target.id === "rngVol") setVol(+e.target.value);
   });
+
+
+  // ===== 音樂總覽 =====
+  let ovSrc = "local", ovGenre = null, editKey = null;
+  const ovIsOpen = () => $$("#mpOv").classList.contains("open");
+  const ovList = () => lib(ovSrc);
+  const bgOf = t => t.cover ? `background-image:url('${esc(t.cover)}')` : "";
+  const groupBy = (arr, f, none) => {
+    const m = new Map(); arr.forEach(t => { const k = f(t) || none; if (!m.has(k)) m.set(k, []); m.get(k).push(t); });
+    return Array.from(m).sort((a, b) => a[0] === none ? 1 : b[0] === none ? -1 : a[0].localeCompare(b[0], "zh-Hant"));
+  };
+  const mg = t => ovSrc === "yt" ? `<i data-ovx="edit" data-key="${esc(t.key)}">${ic("pen", 20)}</i><i data-ovx="del" data-key="${esc(t.key)}">${ic("x", 20)}</i>` : "";
+  const ovRow = (t, sec, g, i, extra) => row(t, extra || "", `data-key="${esc(t.key)}" data-ov="1" data-sec="${sec}" data-g="${esc(g || "")}" data-i="${i}"`);
+  const grp = (L, f, none) => groupBy(L, t => t[f], none).map(g => `<details class="mp-grp"><summary><span>${esc(g[0])}</span><em>${g[1].length} 首</em></summary>${g[1].map((t, i) => ovRow(t, f, g[0], i)).join("")}</details>`).join("");
+  function genreList(L) {
+    if (!ovGenre) return `<p class="mp-hint">點選上方卡片，查看該類型的歌曲。</p>`;
+    const ts = L.filter(t => (t.genre || "未分類") === ovGenre);
+    return ts.map((t, i) => ovRow(t, "genre", ovGenre, i)).join("") || `<p class="mp-hint">沒有歌曲。</p>`;
+  }
+  function genreCards(L) {
+    return `<div class="mp-hs">${groupBy(L, t => t.genre, "未分類").map((g, i) => `<div class="mp-gc${ovGenre === g[0] ? " on" : ""}" data-gc="${esc(g[0])}" style="background:hsl(${(i * 57 + 200) % 360} 55% 42%)"><b>${esc(g[0])}</b><small>${g[1].length} 首</small></div>`).join("")}</div><div id="ovGenreList">${genreList(L)}</div>`;
+  }
+  function scopeList(sec, g) {
+    const L = ovList();
+    if (sec === "recent") return recent.filter(x => x.src === ovSrc);
+    if (sec === "search") { const q = $$("#ovQ").value.trim().toLowerCase(); return L.filter(t => [t.title, t.artist, t.album].some(v => String(v || "").toLowerCase().indexOf(q) >= 0)); }
+    if (sec === "artist") return L.filter(t => (t.artist || "未知歌手") === g);
+    if (sec === "album") return L.filter(t => (t.album || "未分類") === g);
+    if (sec === "genre") return L.filter(t => (t.genre || "未分類") === g);
+    return L;
+  }
+  function renderOv() {
+    const L = ovList(), q = $$("#ovQ").value.trim().toLowerCase();
+    $$("#ovSeg").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.s === ovSrc));
+    $$("#ovYtAdd").style.display = ovSrc === "yt" ? "flex" : "none";
+    const rc = recent.filter(x => x.src === ovSrc);
+    $$("#ovRecent").innerHTML = q ? "" : `<h4 class="mp-h">最近播放</h4>` + (rc.length ? `<div class="mp-hs">${rc.map((t, i) => `<div class="mp-card" data-ov="1" data-sec="recent" data-i="${i}" data-key="${esc(t.key)}"><div class="mp-cv" style="${bgOf(t)}">${t.cover ? "" : "♪"}</div><div class="mp-s">${esc(t.title)}</div></div>`).join("")}</div>` : `<p class="mp-hint">還沒有播放紀錄。</p>`);
+    let h = "";
+    if (q) { const R = scopeList("search"); h = `<h4 class="mp-h">搜尋結果（${R.length}）</h4>` + (R.map((t, i) => ovRow(t, "search", "", i, mg(t))).join("") || `<p class="mp-hint">找不到符合的歌曲。</p>`); }
+    else if (!L.length) h = `<p class="mp-hint">${ovSrc === "yt" ? "還沒有 YouTube 歌曲，請先在上方貼連結新增。" : "還沒有本地音樂。請把 mp3 放進 music 資料夾，並在 music.js 的 LOCAL_TRACKS 登記。"}</p>`;
+    else {
+      h = `<h4 class="mp-h">全部歌曲（${L.length}）</h4>` + L.map((t, i) => ovRow(t, "all", "", i, mg(t))).join("");
+      h += `<h4 class="mp-h">依歌手分類</h4>` + grp(L, "artist", "未知歌手");
+      h += `<h4 class="mp-h">依專輯分類</h4>` + grp(L, "album", "未分類");
+      h += `<h4 class="mp-h">音樂類型</h4>` + genreCards(L);
+    }
+    $$("#ovSections").innerHTML = h; markNow();
+  }
+  function markNow() { $$("#mpOv").querySelectorAll("[data-key]").forEach(e => e.classList.toggle("now", !!cur && e.dataset.key === cur.key)); }
+  function openOv() { ovSrc = cur ? cur.src : prefs.src; ovGenre = null; $$("#ovQ").value = ""; renderOv(); $$("#mpOv").classList.add("open"); $$("#ovScroll").scrollTop = 0; }
+  function closeOv() { $$("#mpOv").classList.remove("open"); }
+  function ovPlay(sec, g, i) {
+    const items = scopeList(sec, g); if (!items.length) return;
+    prefs.src = ovSrc; save(PREF_KEY, prefs);
+    playList(items, i, sec === "all" ? libLabel(ovSrc) : sec === "recent" ? "最近播放" : sec === "search" ? "搜尋結果" : g);
+  }
+  function ytRemoveAt(i) {
+    store.yt.splice(i, 1); persist();
+    if (qLabel === libLabel("yt")) { queue = lib("yt"); if (cur && !queue.some(x => x.key === cur.key)) { stopAll(); playing = false; loadedKey = null; idx = 0; cur = queue[0] || null; } else if (cur) idx = queue.findIndex(x => x.key === cur.key); }
+    ui(); renderSheet(); if (ovIsOpen()) renderOv();
+  }
+  function patchTrack(key, f) {
+    const ap = x => { if (x.key === key) Object.assign(x, f); };
+    store.yt.forEach(ap); store.lists.forEach(l => l.items.forEach(ap)); recent.forEach(ap); queue.forEach(ap); if (cur && cur.key === key) Object.assign(cur, f);
+    persist(); save("music_recent", recent); ui(); if (ovIsOpen()) renderOv();
+  }
+  function openEdit(key) {
+    const t = store.yt.find(x => x.key === key); if (!t) return; editKey = key;
+    $$("#edT").value = t.title || ""; $$("#edA").value = t.artist || ""; $$("#edB").value = t.album || ""; $$("#edG").value = t.genre || "";
+    const gs = {}; lib("local").concat(store.yt).forEach(x => { if (x.genre) gs[x.genre] = 1; });
+    $$("#mpGenres").innerHTML = Object.keys(gs).map(g => `<option value="${esc(g)}">`).join("");
+    $$("#mpEdit").classList.add("open");
+  }
+
+  $$("#fOv").onclick = openOv; $$("#ovClose").onclick = closeOv; $$("#ovNow").onclick = e => { if (!e.target.closest("button")) closeOv(); };
+  $$("#oPlay").onclick = toggle;
+  $$("#ovSeg").onclick = e => { const b = e.target.closest("button"); if (b) { ovSrc = b.dataset.s; ovGenre = null; renderOv(); $$("#ovScroll").scrollTop = 0; } };
+  $$("#ovQ").addEventListener("input", renderOv);
+  $$("#ovYtBtn").onclick = () => addYT("#ovYtUrl");
+  $$("#ovYtUrl").addEventListener("keydown", e => { if (e.key === "Enter") addYT("#ovYtUrl"); });
+  $$("#ovScroll").onclick = e => {
+    const x = e.target.closest("[data-ovx]");
+    if (x) {
+      if (x.dataset.ovx === "edit") openEdit(x.dataset.key);
+      else { const i = store.yt.findIndex(t => t.key === x.dataset.key); if (i >= 0 && confirm("確定要刪除這首 YouTube 歌曲嗎？")) ytRemoveAt(i); }
+      return;
+    }
+    const gc = e.target.closest("[data-gc]");
+    if (gc) {
+      ovGenre = ovGenre === gc.dataset.gc ? null : gc.dataset.gc;
+      $$("#ovScroll").querySelectorAll(".mp-gc").forEach(c => c.classList.toggle("on", c.dataset.gc === ovGenre));
+      $$("#ovGenreList").innerHTML = genreList(ovList()); markNow(); return;
+    }
+    const r = e.target.closest("[data-ov]"); if (r) ovPlay(r.dataset.sec, r.dataset.g, +r.dataset.i);
+  };
+  $$("#edCancel").onclick = () => $$("#mpEdit").classList.remove("open");
+  $$("#mpEdit").onclick = e => { if (e.target.id === "mpEdit") $$("#mpEdit").classList.remove("open"); };
+  $$("#edSave").onclick = () => {
+    const t = store.yt.find(x => x.key === editKey); if (!t) return;
+    patchTrack(editKey, { title: $$("#edT").value.trim() || t.title, artist: $$("#edA").value.trim(), album: $$("#edB").value.trim(), genre: $$("#edG").value.trim() });
+    $$("#mpEdit").classList.remove("open"); toast("已儲存");
+  };
 
   applyAudio();
   ui();
