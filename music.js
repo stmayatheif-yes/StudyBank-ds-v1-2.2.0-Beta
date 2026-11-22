@@ -653,6 +653,12 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
 #mpRoot #mpBall.drag{transition:none;cursor:grabbing}
 #mpRoot #mpBall.on{animation:mpPulse 1.6s infinite}
 @keyframes mpPulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.6),0 4px 14px rgba(0,0,0,.35)}70%{box-shadow:0 0 0 14px rgba(255,255,255,0),0 4px 14px rgba(0,0,0,.35)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0),0 4px 14px rgba(0,0,0,.35)}}
+#mpRoot #mpBar .mp-row{gap:0;padding:0;align-items:stretch}
+#mpRoot #mpBar .mp-row>.mp-sg{display:flex;align-items:center;justify-content:center;width:auto;height:auto;border-radius:0;border-left:1px solid var(--bd);cursor:pointer;transition:background .12s}
+#mpRoot #mpBar .mp-row>.mp-sg:first-child{border-left:0}
+#mpRoot #mpBar .mp-row>.mp-sg:active{background:rgba(128,128,128,.28)}
+#mpRoot #mpBar .mp-row>button.mp-sg{min-width:50px}
+#mpRoot #mpBar .mp-row>.mp-info2{flex:1;min-width:0;justify-content:flex-start;gap:12px;padding:8px 10px}
 html.mp-ballmode main{padding-bottom:24px!important}`;
     document.head.appendChild(sty);
     ball.id = "mpBall"; ball.textContent = "♪"; ball.setAttribute("role", "button"); ball.tabIndex = 0; ball.setAttribute("aria-label", "展開音樂播放列");
