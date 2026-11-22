@@ -52,7 +52,7 @@
       : `<p style="margin:10px 0 0">今天還沒簽到。</p>`;
     const m2 = vModal("vocabSignin");
     m2.innerHTML = `<div class="modal-content" onclick="event.stopPropagation()" style="width:min(380px,92vw)">
-      <h3>📅 簽到</h3>
+      <h3 style="display:flex;align-items:center;justify-content:space-between">📅 簽到<button class="go" style="width:auto;margin:0;padding:6px 10px;font-size:.85rem" onclick="VocabDaily.daily()">每日單字</button></h3>
       <p class="vd-month">${y} 年 ${m + 1} 月</p>
       <div class="vd-week"><div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div></div>
       <div class="vd-grid">${cells}</div>
@@ -61,7 +61,6 @@
         ${signedNow ? "" : `<button class="go" onclick="VocabDaily.signin()">簽到</button>`}
         <button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="document.getElementById('vocabSignin').classList.remove('active')">關閉</button>
       </div>
-      <button class="vd-corner" onclick="VocabDaily.daily()">每日單字</button>
     </div>`;
     m2.classList.add("active");
   }
