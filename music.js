@@ -657,9 +657,14 @@ html.mp-ballmode main{padding-bottom:24px!important}`;
     document.head.appendChild(sty);
     ball.id = "mpBall"; ball.textContent = "♪"; ball.setAttribute("role", "button"); ball.tabIndex = 0; ball.setAttribute("aria-label", "展開音樂播放列");
     root.appendChild(ball);
-    btn.className = "mp-ib"; btn.id = "bBall"; btn.setAttribute("aria-label", "收成懸浮球");
+    btn.className = "mp-ib mp-sg"; btn.id = "bBall";
     btn.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24"><path ${S} stroke-width="2.5" d="M9 6l6 6-6 6"/></svg>`;
-    bar.querySelector(".mp-row").appendChild(btn);
+    const row = bar.querySelector(".mp-row"), info = document.createElement("div");
+info.className = "mp-sg mp-info2";
+info.appendChild($$("#bCv")); info.appendChild(row.querySelector(".mp-meta"));
+row.insertBefore(info, $$("#bPlay"));
+$$("#bPlay").classList.add("mp-sg"); $$("#bUp").classList.add("mp-sg");
+row.insertBefore(btn, row.firstChild);
 
     let side = "r", yf = 0.8, on = false;
     try { const o = JSON.parse(localStorage.getItem(KEY) || "{}"); if (o.side) side = o.side; if (typeof o.y === "number") yf = o.y; on = !!o.on; } catch (e) {}
