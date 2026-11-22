@@ -589,6 +589,9 @@ html[data-theme="dark"][data-style="glass"] .version-btn{background:rgba(31,41,5
 .subject-nav button.active,
 html[data-style="glass"] .subject-nav button.active{background:#3b82f6!important;color:#fff!important;border-color:transparent!important}
 </style>
+
+  <link rel="stylesheet" href="liquid.css">
+  
 </head>
 <body>
 
@@ -1329,6 +1332,7 @@ function setStyle(styleName) {
   document.querySelectorAll('.style-btn').forEach(btn => btn.classList.remove('active'));
   if (styleName === 'solid') document.getElementById('btnStyleSolid').classList.add('active');
   if (styleName === 'glass') document.getElementById('btnStyleGlass').classList.add('active');
+  if (styleName === 'liquid') document.getElementById('btnStyleLiquid').classList.add('active');
 }
 
 function setBgType(type) {
@@ -1452,6 +1456,7 @@ function _renderSettings() {
         <div class="style-options">
           <button class="style-btn ${currentStyle === 'solid' ? 'active' : ''}" id="btnStyleSolid" onclick="setStyle('solid')">初始純色</button>
           <button class="style-btn ${currentStyle === 'glass' ? 'active' : ''}" id="btnStyleGlass" onclick="setStyle('glass')">柔光玻璃</button>
+          <button class="style-btn ${currentStyle === 'liquid' ? 'active' : ''}" id="btnStyleLiquid" onclick="setStyle('liquid')">液態玻璃</button>
         </div>
       </div>
       
@@ -1819,6 +1824,8 @@ function goToFeedbackMail() {
   <script src="tools.js"></script>
   
   <script src="music.js"></script>
+
+  <script src="liquid.js"></script>
   
 </body>
 </html>
