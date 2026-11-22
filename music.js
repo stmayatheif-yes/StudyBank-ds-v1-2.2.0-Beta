@@ -280,7 +280,7 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
   function playIdx(i, again) {
     if (!queue.length) return;
     idx = (i + queue.length) % queue.length; cur = queue[idx]; plays = again ? plays + 1 : 1; if (!again) pushRecent(cur);
-    stopAll(); loadedKey = cur.key; playing = true;
+    stopAll(); loadedKey = cur.key; playing = cur.src !== "yt";
     if (cur.src === "yt") { needYT(); if (ytReady) { ytp.loadVideoById(cur.vid); applyYT(); } else pendingVid = cur.vid; }
     else { audio.src = cur.url; applyAudio(); audio.play().catch(() => { playing = false; ui(); toast("無法播放這個音檔，請確認檔案路徑"); }); }
     ui();
@@ -641,5 +641,8 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
   };
 
   applyAudio();
+
+   if (store.yt.length) needYT();
+   
   ui();
 })();
