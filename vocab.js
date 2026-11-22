@@ -79,11 +79,22 @@ async function openVocab() {
 function closeVocabFlag() { window.__vocabActive = false; setVocabNav(false); }
 
 // ---------- 單字頁 ----------
+// 排序圖示：A~Z（字母）或 Level（等級），箭頭向上為正序、向下為倒序；字母倒序為 Z~A
+function vocabSortIcon() {
+  const alpha = vocabUI.by === "alpha", desc = vocabUI.dir === "desc";
+  const label = alpha ? (desc ? "Z~A" : "A~Z") : "Level";
+  const fs = alpha ? 11 : 9;
+  return `<svg viewBox="0 0 56 44" width="46" height="36" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <line x1="4" y1="6" x2="30" y2="6"/><line x1="4" y1="14" x2="26" y2="14"/><line x1="12" y1="22" x2="24" y2="22"/>
+    <text x="3" y="40" stroke="none" fill="currentColor" font-size="${fs}" font-family="inherit">${label}</text>
+    <g transform="${desc ? "translate(0,44) scale(1,-1)" : ""}"><line x1="44" y1="6" x2="44" y2="40"/><polyline points="38,12 44,6 50,12"/></g>
+  </svg>`;
+}
 function renderVocab() {
   const stars = vocabRead(VOCAB_STAR_KEY), hards = vocabRead(VOCAB_HARD_KEY);
   const starSet = new Set(stars), hardSet = new Set(hards);
   const list = sortVocab(filterVocab(VOCAB, vocabUI.mode, stars, hards, vocabUI.query), vocabUI.by, vocabUI.dir);
-  const rows = list.slice(0, 300).map(w => `
+  const rows = list.map(w => `
     <div class="v-row">
       <div class="v-main">
         <div class="v-en"><span class="v-hard-mark">${hardSet.has(w.id) ? "❗" : ""}</span>${vEsc(w.en)} <span class="v-pos">${vEsc(w.pos)}</span></div>
@@ -93,9 +104,8 @@ function renderVocab() {
       <button class="v-btn ${starSet.has(w.id) ? "on" : ""}" title="加入收藏" onclick="VocabUI.star(${w.id})">⭐</button>
       <button class="v-btn ${hardSet.has(w.id) ? "on-hard" : ""}" title="標註為不熟" onclick="VocabUI.hard(${w.id})">❗</button>
     </div>`).join("");
-  const more = list.length > 300 ? `<p class="meta"><span>目前顯示前 300 筆，請用搜尋縮小範圍（共 ${list.length} 筆）。</span></p>` : "";
-  const byLabel = vocabUI.by === "alpha" ? "字母" : "等級";
-  const dirLabel = vocabUI.dir === "asc" ? "正序 ↑" : "倒序 ↓";
+  const more = "";
+  const sortIcon = vocabSortIcon();
   const tab = (k, label, n) => `<button class="v-tab ${vocabUI.mode === k ? "on" : ""}" onclick="VocabUI.mode('${k}')">${label}<span class="v-n">${n}</span></button>`;
 
   A.innerHTML = `
@@ -104,8 +114,8 @@ function renderVocab() {
         <div class="v-pill">
           <button class="v-seg ${vocabUI.by === "alpha" ? "on" : ""}" onclick="VocabUI.by('alpha')">字母</button>
           <button class="v-seg ${vocabUI.by === "level" ? "on" : ""}" onclick="VocabUI.by('level')">等級</button>
-          <button class="v-seg v-dir" onclick="VocabUI.dir()">${byLabel}　${dirLabel}</button>
         </div>
+        <button class="v-sort" title="切換正序／倒序" onclick="VocabUI.dir()">${sortIcon}</button>
         <button class="v-search" title="搜尋單字" onclick="VocabUI.search()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         </button>
@@ -225,8 +235,12 @@ vocabCss.textContent = `
   .v-btn{width:38px;height:38px;border-radius:50%;padding:0;margin:0;box-shadow:none;font-size:1rem;opacity:.35;flex-shrink:0}
   .v-btn.on{opacity:1;background:color-mix(in srgb,#facc15 30%,var(--card))}
   .v-btn.on-hard{opacity:1;background:color-mix(in srgb,var(--no) 25%,var(--card))}
-  .v-tabs{position:sticky;bottom:12px;display:flex;justify-content:center;gap:6px;margin:16px auto 0;padding:6px;width:max-content;max-width:100%;border-radius:999px;border:1px solid var(--bd);background:var(--card);box-shadow:var(--shadow);transition:transform .25s ease,opacity .25s ease}
-  .v-tabs.shrink{transform:scale(.8);opacity:.85}
+  .v-tabs{position:fixed;bottom:14px;left:50%;transform:translateX(-50%) scale(1);transform-origin:center bottom;z-index:900;display:flex;justify-content:center;gap:6px;padding:6px;width:max-content;max-width:calc(100% - 24px);border-radius:999px;border:1px solid var(--bd);background:var(--card);box-shadow:var(--shadow);transition:transform .25s ease,opacity .25s ease}
+  .v-tabs.shrink{transform:translateX(-50%) scale(.82);opacity:.9}
+  .v-page{padding-bottom:110px}
+  .v-row{content-visibility:auto;contain-intrinsic-size:auto 64px}
+  .v-sort{width:56px;height:48px;border-radius:12px;padding:0;margin:0;box-shadow:none;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .v-sort svg{width:46px;height:36px}
   .v-tab{padding:8px 16px;border-radius:999px;border:none;background:transparent;box-shadow:none;margin:0;font-size:.95rem}
   .v-tab.on{background:#3b82f6;color:#fff}
   .v-n{margin-left:6px;font-size:.75rem;opacity:.75}
