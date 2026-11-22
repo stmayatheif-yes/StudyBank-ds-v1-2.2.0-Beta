@@ -245,6 +245,25 @@ vocabCss.textContent = `
   .v-btn.on-hard{opacity:1;background:color-mix(in srgb,var(--no) 25%,var(--card))}
   .v-tabs{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);transform-origin:center bottom;z-index:50;display:flex;justify-content:center;gap:6px;padding:6px;width:max-content;max-width:calc(100% - 24px);border-radius:999px;border:1px solid var(--bd);background:var(--card);box-shadow:var(--shadow);transition:transform .25s ease,opacity .25s ease}
   .v-tabs.shrink{transform:translateX(-50%) scale(.82);opacity:.9}
+  /* 底部橢圓跟著風格：柔光玻璃 / 液態玻璃 */
+  html[data-style="glass"] .v-tabs,
+  html[data-style="liquid"] .v-tabs {
+    background: rgba(255,255,255,.4) !important;
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255,255,255,.6) !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,.08), inset 0 1px 0 rgba(255,255,255,.6) !important;
+  }
+  html[data-theme="dark"][data-style="glass"] .v-tabs,
+  html[data-theme="dark"][data-style="liquid"] .v-tabs {
+    background: rgba(31,41,55,.4) !important;
+    border: 1px solid rgba(255,255,255,.15) !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.14) !important;
+  }
+  html[data-style="liquid"][data-liquid="on"] .v-tabs {
+    backdrop-filter: url(#liquid-glass) blur(10px) saturate(180%);
+    -webkit-backdrop-filter: url(#liquid-glass) blur(10px) saturate(180%);
+  }
   .v-page{padding-bottom:110px}
   .v-row{content-visibility:auto;contain-intrinsic-size:auto 64px}
   .v-sort{width:56px;height:48px;border-radius:12px;padding:0;margin:0;box-shadow:none;display:flex;align-items:center;justify-content:center;flex-shrink:0}
