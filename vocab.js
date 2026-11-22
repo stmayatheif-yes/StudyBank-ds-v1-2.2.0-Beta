@@ -327,10 +327,15 @@ function isAnswerOk(en, input) {
   return t !== "" && acceptSet(en).has(t);
 }
 // 字母模式：依字首（忽略開頭的非英文字母）；等級模式：依 level
-function poolFor(all, by, val) {
-  if (by === "all" || val === "all") return all.slice();
-  if (by === "alpha") return all.filter(w => (w.en.replace(/^[^a-zA-Z]+/, "")[0] || "").toLowerCase() === val.toLowerCase());
-  return all.filter(w => String(w.level) === String(val));
+function poolFor(all, by, vals) {
+  const list = Array.isArray(vals) ? vals : (vals == null || vals === "all" ? [] : [vals]);
+  if (by === "all" || list.length === 0) return all.slice();
+  if (by === "alpha") {
+    const set = new Set(list.map(x => String(x).toLowerCase()));
+    return all.filter(w => set.has((w.en.replace(/^[^a-zA-Z]+/, "")[0] || "").toLowerCase()));
+  }
+  const set = new Set(list.map(String));
+  return all.filter(w => set.has(String(w.level)));
 }
 // 隨機取不重複的 n 個
 function pickN(arr, n, rnd) {
@@ -367,7 +372,7 @@ function gradeTest(qs, answers) {
 /*TEST-PURE-END*/
 
 // ---------- 測驗：題目產生 ----------
-const VTEST = { type: "en2zh", by: "all", val: "all", n: 3, qs: [], answers: [], idx: 0 };
+const VTEST = { type: "en2zh", by: "all", val: [], n: 3, qs: [], answers: [], idx: 0 };
 function buildTestQuestions(all, type, by, val, n, rnd) {
   const pool = poolFor(all, by, val);
   if (type === "match") {
@@ -401,10 +406,16 @@ function openTestSetup() {
   const m = vModal("vTestSetup");
   const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
   const rangeBtns = VTEST.by === "alpha"
-    ? `<div class="vt-grid">${["all", ...letters].map(l => `<button class="vt-chip ${VTEST.val === l ? "on" : ""}" onclick="VTest.setVal('${l}')">${l === "all" ? "全部" : l}</button>`).join("")}</div>`
-    : VTEST.by === "level"
-      ? `<div class="vt-grid">${["all", 1, 2, 3, 4, 5, 6].map(l => `<button class="vt-chip ${String(VTEST.val) === String(l) ? "on" : ""}" onclick="VTest.setVal('${l}')">${l === "all" ? "全部" : "Level " + l}</button>`).join("")}</div>`
-      : "";
+  ? `<div class="vt-grid">${["ALL", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"].map(l => {
+      const on = l === "ALL" ? VTEST.val.length === 0 : VTEST.val.includes(l);
+      return `<button class="vt-chip ${on ? "on" : ""}" onclick="VTest.setVal('${l}')">${l === "ALL" ? "全部" : l}</button>`;
+    }).join("")}</div>`
+  : VTEST.by === "level"
+    ? `<div class="vt-grid">${["ALL", 1, 2, 3, 4, 5, 6].map(l => {
+        const on = l === "ALL" ? VTEST.val.length === 0 : VTEST.val.includes(l);
+        return `<button class="vt-chip ${on ? "on" : ""}" onclick="VTest.setVal('${l}')">${l === "ALL" ? "全部" : "Level " + l}</button>`;
+      }).join("")}</div>`
+    : "";
   m.innerHTML = `<div class="modal-content" onclick="event.stopPropagation()" style="width:min(460px,92vw);max-height:86vh;overflow-y:auto">
     <h3>📝 測驗設定</h3>
     <p class="vt-label">測驗方式</p>
@@ -565,8 +576,14 @@ function toolHistory() { try { return JSON.parse(localStorage.getItem(TEST_LIMIT
 const VTest = {
   setup() { window.__vtestActive = false; openTestSetup(); },
   setType(k) { VTEST.type = k; refreshSetup(); },
-  setBy(b) { VTEST.by = b; VTEST.val = "all"; refreshSetup(); },
-  setVal(v) { VTEST.val = (VTEST.by === "level" && v !== "all") ? Number(v) : v; refreshSetup(); },
+    setBy(b) { VTEST.by = b; VTEST.val = []; refreshSetup(); },
+  setVal(v) {
+    if (v === "ALL") { VTEST.val = []; refreshSetup(); return; }
+    const key = VTEST.by === "level" ? Number(v) : v;
+    const i = VTEST.val.findIndex(x => String(x) === String(key));
+    if (i >= 0) VTEST.val.splice(i, 1); else VTEST.val.push(key);
+    refreshSetup();
+  },
   setN(n) { VTEST.n = n; document.getElementById("vtInput").value = ""; refreshSetup(); },
   typedN() { const v = document.getElementById("vtInput").value; if (v !== "") VTEST.n = parseInt(v, 10) || 0; },
   confirm() {
