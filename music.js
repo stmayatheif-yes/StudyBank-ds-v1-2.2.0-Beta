@@ -640,6 +640,70 @@ main{padding-bottom:100px!important}`.replace(/\^/g, "#mpRoot ").replace(/#mpRoo
     $$("#mpEdit").classList.remove("open"); toast("已儲存");
   };
 
+     // ===== 收合成懸浮球 =====
+  (function () {
+    const BALL = 52, M = 4, KEY = "music_ball";
+    const bar = $$("#mpBar"), ball = document.createElement("div"), btn = document.createElement("button");
+    const sty = document.createElement("style");
+    sty.textContent = `
+#mpRoot #mpBar{transition:transform .3s,opacity .3s}
+#mpRoot #mpBar.mp-hide{transform:translateX(calc(-50% + 100vw));opacity:0;visibility:hidden;pointer-events:none;transition:transform .3s,opacity .3s,visibility 0s .3s}
+#mpRoot #mpBall{position:fixed;left:0;top:0;width:${BALL}px;height:${BALL}px;border-radius:50%;z-index:950;display:none;align-items:center;justify-content:center;background:var(--ac);color:#fff;font-size:24px;box-shadow:0 4px 14px rgba(0,0,0,.35);touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;transition:left .25s,top .25s}
+#mpRoot #mpBall.show{display:flex}
+#mpRoot #mpBall.drag{transition:none;cursor:grabbing}
+#mpRoot #mpBall.on{animation:mpPulse 1.6s infinite}
+@keyframes mpPulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.6),0 4px 14px rgba(0,0,0,.35)}70%{box-shadow:0 0 0 14px rgba(255,255,255,0),0 4px 14px rgba(0,0,0,.35)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0),0 4px 14px rgba(0,0,0,.35)}}
+html.mp-ballmode main{padding-bottom:24px!important}`;
+    document.head.appendChild(sty);
+    ball.id = "mpBall"; ball.textContent = "♪"; ball.setAttribute("role", "button"); ball.tabIndex = 0; ball.setAttribute("aria-label", "展開音樂播放列");
+    root.appendChild(ball);
+    btn.className = "mp-ib"; btn.id = "bBall"; btn.setAttribute("aria-label", "收成懸浮球");
+    btn.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24"><path ${S} stroke-width="2.5" d="M9 6l6 6-6 6"/></svg>`;
+    bar.querySelector(".mp-row").appendChild(btn);
+
+    let side = "r", yf = 0.8, on = false;
+    try { const o = JSON.parse(localStorage.getItem(KEY) || "{}"); if (o.side) side = o.side; if (typeof o.y === "number") yf = o.y; on = !!o.on; } catch (e) {}
+    const keep = () => { try { localStorage.setItem(KEY, JSON.stringify({ on: on, side: side, y: yf })); } catch (e) {} };
+    const vw = () => document.documentElement.clientWidth, vh = () => window.innerHeight;
+    function place() {
+      ball.style.left = (side === "l" ? M : vw() - BALL - M) + "px";
+      ball.style.top = Math.max(M, Math.min(vh() - BALL - M, yf * vh())) + "px";
+    }
+    function setMode(v) {
+      on = v; keep(); document.documentElement.classList.toggle("mp-ballmode", on);
+      if (on) { ball.classList.add("drag"); place(); void ball.offsetWidth; ball.classList.remove("drag"); ball.classList.add("show"); bar.classList.add("mp-hide"); }
+      else { ball.classList.remove("show"); bar.classList.remove("mp-hide"); }
+    }
+    btn.onclick = () => { const r = bar.getBoundingClientRect(); yf = (r.top + r.height / 2 - BALL / 2) / vh(); side = "r"; setMode(true); };
+
+    let pid = null, sx = 0, sy = 0, ox = 0, oy = 0, moved = false;
+    ball.addEventListener("pointerdown", e => {
+      pid = e.pointerId; ball.setPointerCapture(pid); const r = ball.getBoundingClientRect();
+      sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top; moved = false; ball.classList.add("drag");
+    });
+    ball.addEventListener("pointermove", e => {
+      if (e.pointerId !== pid) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (!moved && Math.abs(dx) + Math.abs(dy) < 6) return;
+      moved = true;
+      ball.style.left = Math.max(0, Math.min(vw() - BALL, ox + dx)) + "px";
+      ball.style.top = Math.max(0, Math.min(vh() - BALL, oy + dy)) + "px";
+    });
+    function release(e, cancel) {
+      if (e.pointerId !== pid) return; pid = null; ball.classList.remove("drag");
+      if (!moved && !cancel) return setMode(false);
+      const r = ball.getBoundingClientRect();
+      side = r.left + BALL / 2 < vw() / 2 ? "l" : "r"; yf = r.top / vh(); keep(); place();
+    }
+    ball.addEventListener("pointerup", e => release(e, false));
+    ball.addEventListener("pointercancel", e => release(e, true));
+    ball.addEventListener("contextmenu", e => e.preventDefault());
+    ball.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") setMode(false); });
+    window.addEventListener("resize", () => { if (on) place(); });
+    setInterval(() => ball.classList.toggle("on", !!playing), 500);
+    if (on) { bar.style.transition = "none"; setMode(true); void bar.offsetWidth; bar.style.transition = ""; }
+  })();
+
   applyAudio();
 
    if (store.yt.length) needYT();
