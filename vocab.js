@@ -131,6 +131,7 @@ function renderVocab() {
         </button>
       </div>
       ${vocabUI.query ? `<div class="v-chip">搜尋：${vEsc(vocabUI.query)} <button onclick="VocabUI.clearQuery()">✕</button></div>` : ""}
+      <button class="go" style="margin:0 0 12px" onclick="VTest.setup()">📝 測驗</button>
       <div class="v-legend"><span>⭐ 加入收藏</span><span>❗ 標註為不熟</span></div>
       <div class="v-list">${rows || `<p class="meta"><span>沒有符合條件的單字。</span></p>`}</div>
       ${more}
@@ -272,6 +273,15 @@ vocabCss.textContent = `
   .v-tab.on{background:#3b82f6;color:#fff}
   .v-n{margin-left:6px;font-size:.75rem;opacity:.75}
   .v-entry .go{margin-top:12px}
+  .vt-label{font-weight:bold;margin:14px 0 6px;font-size:.95rem}
+  .vt-grid{display:flex;flex-wrap:wrap;gap:8px}
+  .vt-chip{padding:8px 14px;border-radius:999px;margin:0;font-size:.9rem}
+  .vt-chip.on{background:#3b82f6;color:#fff;border-color:transparent}
+  .vt-matchgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+  .vt-match{width:100%;margin:0;padding:8px 6px;font-size:.85rem;border-radius:10px;text-align:center}
+  .vt-match.sel{background:#3b82f6;color:#fff}
+  .vt-match.done{opacity:.35;background:var(--ok);color:#fff}
+  .v-wrong{padding:8px 0;border-bottom:1px dashed var(--bd);font-size:.9rem}
 `;
 document.head.appendChild(vocabCss);
 
@@ -296,6 +306,293 @@ navVocab.id = "navVocab";
 navVocab.textContent = "📚 單字";
 navVocab.onclick = () => switchPage("vocab");
 _vStatsNav.insertAdjacentElement("afterend", navVocab);
+
+
+// ==========================================
+// 梯次一／二：測驗（英選中、中選英、中文拼英文、10 個配對）
+// ==========================================
+/*TEST-PURE-START*/
+// 可接受的英文答案：完整寫法、斜線分隔的各個寫法、括號內的同義寫法
+function acceptSet(en) {
+  const set = new Set();
+  const full = String(en).trim().toLowerCase().replace(/\s+/g, " ");
+  set.add(full);
+  const outer = full.replace(/\([^)]*\)/g, "").trim();
+  outer.split("/").map(x => x.trim()).filter(Boolean).forEach(x => set.add(x));
+  (full.match(/\(([^)]*)\)/g) || []).forEach(g => g.slice(1, -1).split(",").map(x => x.trim()).filter(Boolean).forEach(x => set.add(x)));
+  return set;
+}
+function isAnswerOk(en, input) {
+  const t = String(input || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return t !== "" && acceptSet(en).has(t);
+}
+// 字母模式：依字首（忽略開頭的非英文字母）；等級模式：依 level
+function poolFor(all, by, val) {
+  if (by === "all" || val === "all") return all.slice();
+  if (by === "alpha") return all.filter(w => (w.en.replace(/^[^a-zA-Z]+/, "")[0] || "").toLowerCase() === val.toLowerCase());
+  return all.filter(w => String(w.level) === String(val));
+}
+// 隨機取不重複的 n 個
+function pickN(arr, n, rnd) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a.slice(0, n);
+}
+// 干擾選項：從 pool（不夠則用全部）取不同的答案，不包含正確答案
+function distractors(correctW, pool, all, key, n, rnd) {
+  let src = pool.filter(w => w.id !== correctW.id && w[key] !== correctW[key]);
+  if (src.length < n) src = all.filter(w => w.id !== correctW.id && w[key] !== correctW[key]);
+  const seen = new Set([correctW[key]]);
+  const out = [];
+  for (const w of pickN(src, src.length, rnd)) {
+    if (seen.has(w[key])) continue;
+    seen.add(w[key]); out.push(w[key]);
+    if (out.length === n) break;
+  }
+  return out;
+}
+// 計分：一個選項題或拼字題答對與否；配對題需全部配對且沒有錯誤
+function gradeTest(qs, answers) {
+  let correct = 0; const wrong = [];
+  qs.forEach((q, i) => {
+    const a = answers[i];
+    let ok = false;
+    if (q.kind === "choice") ok = a === q.answerIdx;
+    else if (q.kind === "type") ok = isAnswerOk(q.en, a);
+    else if (q.kind === "match") ok = a && a.mistakes === 0;
+    if (ok) correct++; else wrong.push({ i, q, a });
+  });
+  return { correct, total: qs.length, wrong };
+}
+/*TEST-PURE-END*/
+
+// ---------- 測驗：題目產生 ----------
+const VTEST = { type: "en2zh", by: "all", val: "all", n: 3, qs: [], answers: [], idx: 0 };
+function buildTestQuestions(all, type, by, val, n, rnd) {
+  const pool = poolFor(all, by, val);
+  if (type === "match") {
+    const qs = [];
+    for (let r = 0; r < n; r++) {
+      const words = pickN(pool, 10, rnd);
+      qs.push({ kind: "match", words });
+    }
+    return qs;
+  }
+  const picked = pickN(pool, n, rnd);
+  return picked.map(w => {
+    if (type === "typing") return { kind: "type", zh: w.zh, en: w.en, id: w.id };
+    const isEn2Zh = type === "en2zh";
+    const key = isEn2Zh ? "zh" : "en";
+    const wrongs = distractors(w, pool, all, key, 3, rnd);
+    const opts = pickN([w[key], ...wrongs], 4, rnd);
+    return { kind: "choice", prompt: isEn2Zh ? w.en : w.zh, options: opts, answerIdx: opts.indexOf(w[key]), en: w.en, zh: w.zh, id: w.id };
+  });
+}
+const TEST_NAME = { en2zh: "英選中", zh2en: "中選英", typing: "中文拼英文", match: "10 個配對" };
+const TEST_LIMIT_KEY = "vocab_tests";
+
+// ---------- 測驗設定彈窗（與隨機刷題相同的數量選擇方式） ----------
+const TEST_PRESETS = [3, 10, 20, 30, 40, 50, 100];
+function testLimit() {
+  const pool = poolFor(VOCAB, VTEST.by, VTEST.val).length;
+  return VTEST.type === "match" ? Math.floor(pool / 10) : pool;
+}
+function openTestSetup() {
+  const m = vModal("vTestSetup");
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+  const rangeBtns = VTEST.by === "alpha"
+    ? `<div class="vt-grid">${["all", ...letters].map(l => `<button class="vt-chip ${VTEST.val === l ? "on" : ""}" onclick="VTest.setVal('${l}')">${l === "all" ? "全部" : l}</button>`).join("")}</div>`
+    : VTEST.by === "level"
+      ? `<div class="vt-grid">${["all", 1, 2, 3, 4, 5, 6].map(l => `<button class="vt-chip ${String(VTEST.val) === String(l) ? "on" : ""}" onclick="VTest.setVal('${l}')">${l === "all" ? "全部" : "Level " + l}</button>`).join("")}</div>`
+      : "";
+  m.innerHTML = `<div class="modal-content" onclick="event.stopPropagation()" style="width:min(460px,92vw);max-height:86vh;overflow-y:auto">
+    <h3>📝 測驗設定</h3>
+    <p class="vt-label">測驗方式</p>
+    <div class="vt-grid">${Object.keys(TEST_NAME).map(k => `<button class="vt-chip ${VTEST.type === k ? "on" : ""}" onclick="VTest.setType('${k}')">${TEST_NAME[k]}</button>`).join("")}</div>
+    <p class="vt-label">範圍</p>
+    <div class="vt-grid">
+      <button class="vt-chip ${VTEST.by === "all" ? "on" : ""}" onclick="VTest.setBy('all')">全部</button>
+      <button class="vt-chip ${VTEST.by === "alpha" ? "on" : ""}" onclick="VTest.setBy('alpha')">字母 A~Z</button>
+      <button class="vt-chip ${VTEST.by === "level" ? "on" : ""}" onclick="VTest.setBy('level')">等級 1~6</button>
+    </div>
+    ${rangeBtns}
+    <p class="vt-label">題數（配對為回合數，每回合 10 個單字）</p>
+    <div class="vt-grid">${TEST_PRESETS.map(n => `<button class="vt-chip ${VTEST.n === n ? "on" : ""}" onclick="VTest.setN(${n})">${n}</button>`).join("")}</div>
+    <input type="number" id="vtInput" min="1" placeholder="可輸入自訂題目數" style="width:100%;box-sizing:border-box;margin-top:10px;text-align:center" oninput="VTest.typedN()">
+    <p id="vtMsg" style="color:var(--no);min-height:1.2em;margin:8px 0 0;font-size:.9rem"></p>
+    <p class="meta" style="margin:4px 0 0"><span>可選範圍內單字：${testLimit()} ${VTEST.type === "match" ? "（可出 " + testLimit() + " 回合）" : ""}</span></p>
+    <div class="modal-actions">
+      <button class="go" onclick="VTest.confirm()">確認</button>
+      <button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="document.getElementById('vTestSetup').classList.remove('active')">取消</button>
+    </div></div>`;
+  m.classList.add("active");
+}
+function refreshSetup() { if (document.getElementById("vTestSetup")?.classList.contains("active")) openTestSetup(); }
+
+// ---------- 測驗頁 ----------
+function startTest(n) {
+  const rnd = Math.random;
+  VTEST.qs = buildTestQuestions(VOCAB, VTEST.type, VTEST.by, VTEST.val, n, rnd);
+  VTEST.answers = []; VTEST.idx = 0;
+  window.__vtestActive = true;
+  removeVocabTabs();
+  renderTestQ();
+}
+function testHeader(extra) {
+  return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px dashed var(--bd)">
+    <span>${TEST_NAME[VTEST.type]}　第 ${VTEST.idx + 1} / ${VTEST.qs.length} 題</span>
+    <button onclick="VTest.quit()" style="padding:6px 12px;margin:0">結束</button></div>${extra || ""}`;
+}
+function renderTestQ() {
+  const q = VTEST.qs[VTEST.idx];
+  let body = "";
+  if (q.kind === "choice") {
+    body = `<p style="font-size:1.4rem;font-weight:bold;text-align:center;margin:18px 0 14px">${vEsc(q.prompt)}</p>
+      ${q.options.map((o, k) => `<button class="opt" onclick="VTestAct.pickChoice(${k})">${vEsc(o)}</button>`).join("")}`;
+  } else if (q.kind === "type") {
+    body = `<p style="font-size:1.3rem;font-weight:bold;text-align:center;margin:18px 0">${vEsc(q.zh)}</p>
+      <input type="text" id="vtType" placeholder="輸入英文（忽略大小寫）" autocomplete="off" autocapitalize="off" spellcheck="false"
+        style="width:100%;box-sizing:border-box;text-align:center;font-size:1.1rem" onkeypress="if(event.key==='Enter')VTestAct.submitType()">
+      <button class="go" onclick="VTestAct.submitType()">送出</button>`;
+  } else {
+    body = matchBody(q);
+  }
+  A.innerHTML = `<div class="card v-test">${testHeader(body)}${q.kind === "match" ? "" : ""}</div>`;
+  window.scrollTo(0, 0);
+  if (q.kind === "type") setTimeout(() => { const i = document.getElementById("vtType"); if (i) i.focus(); }, 50);
+}
+function matchBody(q) {
+  q.state = q.state || { left: null, right: null, done: {}, mistakes: 0, leftOrder: q.words.map(w => w.id), rightOrder: pickN(q.words.map(w => w.id), 10, Math.random) };
+  const st = q.state;
+  const L = st.leftOrder.map(id => q.words.find(w => w.id === id));
+  const R = st.rightOrder.map(id => q.words.find(w => w.id === id));
+  const cell = (w, side) => {
+    const isDone = !!st.done[w.id];
+    const sel = side === "L" ? st.left === w.id : st.right === w.id;
+    return `<button class="vt-match ${isDone ? "done" : ""} ${sel ? "sel" : ""}" ${isDone ? "disabled" : ""} onclick="VTestAct.matchPick('${side}',${w.id})">${side === "L" ? vEsc(w.en) : vEsc(w.zh)}</button>`;
+  };
+  return `<p class="meta" style="margin:0 0 8px"><span>先點左邊英文，再點右邊中文配對。錯誤：${st.mistakes}</span></p>
+    <div class="vt-matchgrid"><div>${L.map(w => cell(w, "L")).join("")}</div><div>${R.map(w => cell(w, "R")).join("")}</div></div>
+    <button class="go" onclick="VTestAct.nextFromMatch()" ${Object.keys(st.done).length === 10 ? "" : "disabled"}>下一題</button>`;
+}
+
+// 配對完成後才可按下一題；每一題需要全部配對
+const VTestAct = {
+  pickChoice(k) {
+    VTEST.answers[VTEST.idx] = k;
+    const q = VTEST.qs[VTEST.idx];
+    const btns = [...document.querySelectorAll("#app .opt")];
+    btns.forEach((b, i) => {
+      b.disabled = true;
+      if (i === q.answerIdx) b.classList.add("ok");
+      else if (i === k) b.classList.add("no");
+    });
+    showNextBtn();
+  },
+  submitType() {
+    const v = document.getElementById("vtType").value;
+    const q = VTEST.qs[VTEST.idx];
+    VTEST.answers[VTEST.idx] = v;
+    const ok = isAnswerOk(q.en, v);
+    document.getElementById("vtType").disabled = true;
+    const tip = document.createElement("div");
+    tip.className = "feedback";
+    tip.style.borderLeftColor = ok ? "var(--ok)" : "var(--no)";
+    tip.innerHTML = `<p style="margin:0 0 6px;font-weight:bold;color:${ok ? "var(--ok)" : "var(--no)"}">${ok ? "答對了！" : "答錯了"}</p><p style="margin:0">正確答案：<strong>${vEsc(q.en)}</strong></p>`;
+    document.querySelector("#app .v-test").appendChild(tip);
+    showNextBtn();
+  },
+  matchPick(side, id) {
+    const q = VTEST.qs[VTEST.idx], st = q.state;
+    if (side === "L") { st.left = id; }
+    else {
+      if (st.left == null) { st.right = id; }
+      else {
+        if (st.left === id) { st.done[id] = true; }
+        else { st.mistakes++; }
+        st.left = null;
+      }
+    }
+    if (side === "R" && st.left != null) {}
+    renderTestQ();
+  },
+  nextFromMatch() {
+    const q = VTEST.qs[VTEST.idx];
+    VTEST.answers[VTEST.idx] = { mistakes: q.state.mistakes };
+    VTestAct.advance();
+  },
+  advance() {
+    if (VTEST.idx < VTEST.qs.length - 1) { VTEST.idx++; renderTestQ(); }
+    else renderTestResult();
+  }
+};
+function showNextBtn() {
+  const card = document.querySelector("#app .v-test");
+  if (card && !document.getElementById("vtNext")) {
+    const b = document.createElement("button");
+    b.id = "vtNext"; b.className = "btn-next"; b.style.marginTop = "12px";
+    b.textContent = VTEST.idx === VTEST.qs.length - 1 ? "看測驗結果" : "下一題";
+    b.onclick = () => VTestAct.advance();
+    card.appendChild(b);
+  }
+}
+// ---------- 測驗結果 ----------
+function renderTestResult() {
+  const res = gradeTest(VTEST.qs, VTEST.answers);
+  const pct = res.total ? Math.round(res.correct / res.total * 100) : 0;
+  const hist = toolHistory();
+  hist.push({ type: VTEST.type, by: VTEST.by, val: VTEST.val, correct: res.correct, total: res.total, ts: Date.now() });
+  vocabWrite(TEST_LIMIT_KEY, hist.slice(-200));
+  const wrongRows = res.wrong.map(x => {
+    const q = x.q;
+    if (q.kind === "match") return `<div class="v-wrong"><strong>第 ${x.i + 1} 題（配對）</strong>　錯誤 ${x.a ? x.a.mistakes : "—"} 次</div>`;
+    if (q.kind === "choice") return `<div class="v-wrong"><strong>${vEsc(q.prompt)}</strong>　正確：${vEsc(q.options[q.answerIdx])}</div>`;
+    return `<div class="v-wrong"><strong>${vEsc(q.zh)}</strong>　你的答案：${vEsc(x.a || "（未作答）")}　正確：${vEsc(q.en)}</div>`;
+  }).join("");
+  A.innerHTML = `<div class="card v-test">
+    <div class="header-row"><h2>📝 測驗結果</h2></div>
+    <div style="text-align:center;margin:10px 0 16px"><div style="font-size:3rem;font-weight:bold;color:var(--ac)">${pct}%</div>
+      <p style="margin:4px 0">${TEST_NAME[VTEST.type]}　答對 <strong>${res.correct}</strong> / ${res.total}</p></div>
+    ${wrongRows || `<p class="meta"><span>全部答對！</span></p>`}
+    <button class="go" onclick="VTest.back()">回到單字頁</button>
+    <button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="VTest.setup()">再測一次</button>
+  </div>`;
+  window.scrollTo(0, 0);
+}
+function toolHistory() { try { return JSON.parse(localStorage.getItem(TEST_LIMIT_KEY)) || []; } catch (e) { return []; } }
+
+// ---------- 介面操作 ----------
+const VTest = {
+  setup() { window.__vtestActive = false; openTestSetup(); },
+  setType(k) { VTEST.type = k; refreshSetup(); },
+  setBy(b) { VTEST.by = b; VTEST.val = "all"; refreshSetup(); },
+  setVal(v) { VTEST.val = (VTEST.by === "level" && v !== "all") ? Number(v) : v; refreshSetup(); },
+  setN(n) { VTEST.n = n; document.getElementById("vtInput").value = ""; refreshSetup(); },
+  typedN() { const v = document.getElementById("vtInput").value; if (v !== "") VTEST.n = parseInt(v, 10) || 0; },
+  confirm() {
+    const raw = document.getElementById("vtInput").value.trim();
+    let n = raw !== "" ? parseInt(raw, 10) : VTEST.n;
+    const msg = document.getElementById("vtMsg");
+    if (!n || n < 1) { msg.textContent = "請選擇或輸入題數"; return; }
+    const lim = testLimit();
+    if (n > lim) {                                 // 超過範圍：留在設定，數字改成上限
+      document.getElementById("vtInput").value = lim;
+      VTEST.n = lim;
+      msg.textContent = "超過範圍可出的題數，已改為 " + lim;
+      return;
+    }
+    VTEST.n = n;
+    document.getElementById("vTestSetup").classList.remove("active");
+    startTest(n);
+  },
+  quit() {
+    if (!confirm("確定結束測驗？本次作答不會保存。")) return;
+    VTest.back();
+  },
+  back() { window.__vtestActive = false; renderVocab(); }
+};
+window.VTest = VTest;
+window.VTestAct = VTestAct;
 
 // ---------- 包住既有函式 ----------
 const _vSwitchPage = switchPage;
