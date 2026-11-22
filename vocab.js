@@ -68,6 +68,7 @@ async function openVocab() {
   document.getElementById("subjectNav").style.display = "none";
   setVocabNav(true);
   history.replaceState(null, "", "#vocab");
+  removeVocabTabs();
   A.innerHTML = `<div class="card"><p class="meta"><span>載入單字中…</span></p></div>`;
   try {
     await loadVocab();
@@ -76,7 +77,15 @@ async function openVocab() {
     A.innerHTML = `<div class="card"><h2>📚 英文單字</h2><p>無法載入單字資料：${vEsc(e.message)}</p><p class="meta"><span>請確認 vocab.json 已上傳到專案根目錄。</span></p></div>`;
   }
 }
-function closeVocabFlag() { window.__vocabActive = false; setVocabNav(false); }
+function closeVocabFlag() { window.__vocabActive = false; setVocabNav(false); removeVocabTabs(); }
+
+// 底部橢圓：直接掛在 body 下，固定於視窗底部（不放在卡片裡，避免卡片的毛玻璃效果影響定位）
+function vocabTabsEl() {
+  let el = document.getElementById("vocabTabs");
+  if (!el) { el = document.createElement("div"); el.id = "vocabTabs"; el.className = "v-tabs"; document.body.appendChild(el); }
+  return el;
+}
+function removeVocabTabs() { const el = document.getElementById("vocabTabs"); if (el) el.remove(); }
 
 // ---------- 單字頁 ----------
 // 排序圖示：A~Z（字母）或 Level（等級），箭頭向上為正序、向下為倒序；字母倒序為 Z~A
@@ -107,6 +116,7 @@ function renderVocab() {
   const more = "";
   const sortIcon = vocabSortIcon();
   const tab = (k, label, n) => `<button class="v-tab ${vocabUI.mode === k ? "on" : ""}" onclick="VocabUI.mode('${k}')">${label}<span class="v-n">${n}</span></button>`;
+  vocabTabsEl().innerHTML = `${tab("all", "全部", VOCAB.length)}${tab("star", "收藏", stars.length)}${tab("hard", "不熟", hards.length)}`;
 
   A.innerHTML = `
     <div class="card v-page">
@@ -124,9 +134,6 @@ function renderVocab() {
       <div class="v-legend"><span>⭐ 加入收藏</span><span>❗ 標註為不熟</span></div>
       <div class="v-list">${rows || `<p class="meta"><span>沒有符合條件的單字。</span></p>`}</div>
       ${more}
-      <div class="v-tabs">
-        ${tab("all", "全部", VOCAB.length)}${tab("star", "收藏", stars.length)}${tab("hard", "不熟", hards.length)}
-      </div>
       <button class="go" style="margin-top:12px" onclick="VocabUI.back()">← 返回英文刷題</button>
     </div>`;
   window.scrollTo(0, 0);
@@ -140,9 +147,10 @@ function bindShrink() {
   window.__vocabShrinkBound = true;
   window.addEventListener("scroll", () => {
     if (!window.__vocabActive) return;
-    document.querySelectorAll(".v-tabs").forEach(el => el.classList.add("shrink"));
+    const el = document.getElementById("vocabTabs"); if (!el) return;
+    el.classList.add("shrink");
     clearTimeout(shrinkTimer);
-    shrinkTimer = setTimeout(() => document.querySelectorAll(".v-tabs").forEach(el => el.classList.remove("shrink")), 180);
+    shrinkTimer = setTimeout(() => el.classList.remove("shrink"), 180);
   }, { passive: true });
 }
 
@@ -235,7 +243,7 @@ vocabCss.textContent = `
   .v-btn{width:38px;height:38px;border-radius:50%;padding:0;margin:0;box-shadow:none;font-size:1rem;opacity:.35;flex-shrink:0}
   .v-btn.on{opacity:1;background:color-mix(in srgb,#facc15 30%,var(--card))}
   .v-btn.on-hard{opacity:1;background:color-mix(in srgb,var(--no) 25%,var(--card))}
-  .v-tabs{position:fixed;bottom:14px;left:50%;transform:translateX(-50%) scale(1);transform-origin:center bottom;z-index:900;display:flex;justify-content:center;gap:6px;padding:6px;width:max-content;max-width:calc(100% - 24px);border-radius:999px;border:1px solid var(--bd);background:var(--card);box-shadow:var(--shadow);transition:transform .25s ease,opacity .25s ease}
+  .v-tabs{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);transform-origin:center bottom;z-index:50;display:flex;justify-content:center;gap:6px;padding:6px;width:max-content;max-width:calc(100% - 24px);border-radius:999px;border:1px solid var(--bd);background:var(--card);box-shadow:var(--shadow);transition:transform .25s ease,opacity .25s ease}
   .v-tabs.shrink{transform:translateX(-50%) scale(.82);opacity:.9}
   .v-page{padding-bottom:110px}
   .v-row{content-visibility:auto;contain-intrinsic-size:auto 64px}
