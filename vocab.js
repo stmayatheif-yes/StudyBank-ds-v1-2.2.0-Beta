@@ -636,3 +636,6 @@ function ensureVocabShown() {
 setTimeout(ensureVocabShown, 0);
 setTimeout(ensureVocabShown, 300);
 window.addEventListener("load", ensureVocabShown);
+
+setTimeout(ensureVocabShown, 1500);
+setTimeout(ensureVocabShown, 3000);
