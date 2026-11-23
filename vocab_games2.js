@@ -165,6 +165,22 @@
     monDraw();
   }
   function bossLabel(lv) { return lv === 50 ? "👑 魔王" : lv % 10 === 0 ? "🐉 大BOSS" : lv % 5 === 0 ? "👹 小BOSS" : "👾 怪物"; }
+    // ---------- 單字打怪：畫面 ----------
+  const SVG_SLASH = `<svg viewBox="0 0 64 64" width="64" height="64" fill="currentColor" aria-hidden="true"><path d="M54 8C38 14 22 28 10 48c6-4 14-8 22-10C42 35 50 22 54 8z"/><path d="M58 24C44 29 30 41 20 56c5-3 12-6 19-8 8-3 15-13 19-24z" opacity="0.75"/><polygon points="14,16 16,22 22,24 16,26 14,32 12,26 6,24 12,22"/></svg>`;
+  const ICON = {
+    heal: `<svg viewBox="0 0 64 64" width="26" height="26" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"><path d="M32 56C10 40 6 30 6 22a12 12 0 0 1 26-4 12 12 0 0 1 26 4c0 8-4 18-26 34z"/></svg>`,
+    hp: `<svg viewBox="0 0 64 64" width="26" height="26" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="12,28 32,14 52,28"/><polyline points="12,40 32,26 52,40"/><polyline points="12,52 32,38 52,52"/></svg>`,
+    sh: `<svg viewBox="0 0 64 64" width="26" height="26" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"><path d="M32 6L54 14V30C54 44 44 54 32 58C20 54 10 44 10 30V14Z"/></svg>`,
+    dmg: `<svg viewBox="0 0 64 64" width="26" height="26" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M10 54L46 18"/><path d="M40 12L52 12L52 24"/><path d="M14 40L24 50"/></svg>`,
+    ln: SVG_SLASH.replace('width="64" height="64"', 'width="26" height="26"')
+  };
+  const monEmoji = lv => lv === 50 ? "👑" : lv % 10 === 0 ? "🐉" : lv % 5 === 0 ? "👹" : "👾";
+  const monSize = lv => lv === 50 ? "vg2-king" : lv % 10 === 0 ? "vg2-big" : lv % 5 === 0 ? "vg2-mid" : "";
+  function itemsHtml() {
+    const c = MON.counts;
+    const item = (k, n) => `<div class="vg2-item" title="${itemName(k)}">${ICON[k]}<b>${n}</b></div>`;
+    return item("heal", c.heal || 0) + item("hp", c.hp) + item("sh", c.sh) + item("dmg", c.dmg) + item("ln", c.ln);
+  }
   function monDraw() {
     if (!MON.over && !MON.q) {
       frame("⚔️ 單字打怪", `<p class="meta"><span>第 ${MON.lv} / 50 關　${bossLabel(MON.lv)}</span></p><p style="text-align:center;margin:24px 0;font-size:1.1rem">${esc(MON.log)}</p>`);
@@ -177,15 +193,27 @@
         <button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="VGame.quit()">返回單字</button></div>`);
       return;
     }
+    const fx = MON.fx || {}; MON.fx = null;
     const q = MON.q;
+    const hpPct = Math.max(0, Math.round(MON.mhp / MON.mhpMax * 100));
+    const playerPct = Math.max(0, Math.round(MON.hp / MON.maxHp * 100));
+    const slashes = Array.from({ length: Math.min(15, fx.lines || 0) }, (_, i) => `<span class="vg2-slash" style="animation-delay:${i * 70}ms;left:${20 + (i % 5) * 12}%;top:${20 + Math.floor(i / 5) * 18}%">${SVG_SLASH}</span>`).join("");
+    const pop = fx.dmg != null ? `<div class="vg2-pop ${fx.kind}">${fx.kind === "hurt" ? "-" : "-"}${fx.dmg}</div>` : "";
     const qHtml = q.type === "choice"
       ? `<p style="font-size:1.3rem;text-align:center;margin:8px 0">${esc(q.w.en)}</p>${q.options.map((o, k) => `<button class="opt" onclick="VG2.monChoice(${k})">${esc(o)}</button>`).join("")}`
       : `<p style="font-size:1.3rem;text-align:center;margin:8px 0">${esc(q.w.zh)}</p><input type="text" id="vg2MonIn" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="輸入英文" style="width:100%;box-sizing:border-box;text-align:center;font-size:1.1rem" onkeypress="if(event.key==='Enter')VG2.monType()"><button class="go" onclick="VG2.monType()">攻擊</button>`;
-    const hpPct = Math.max(0, Math.round(MON.mhp / MON.mhpMax * 100));
     frame("⚔️ 單字打怪", `<p class="meta"><span>第 ${MON.lv} / 50 關　${bossLabel(MON.lv)}</span></p>
+      <div class="vg2-stage">
+        <div class="vg2-mon ${monSize(MON.lv)} ${fx.hit ? "fx-hit" : ""}">${monEmoji(MON.lv)}</div>
+        ${slashes}${pop}
+        <div class="vg2-player ${fx.kind === "hurt" ? "fx-hurt" : ""}">🧙</div>
+      </div>
+      <div class="vg2-label">怪物 ${Math.max(0, MON.mhp)} / ${MON.mhpMax}</div>
       <div class="vg2-bar"><div class="vg2-bar-in" style="width:${hpPct}%"></div></div>
-      <p style="text-align:center;font-size:.9rem;margin:4px 0 10px">怪物 ${Math.max(0, MON.mhp)} / ${MON.mhpMax}</p>
-      <p class="meta"><span>❤️ ${MON.hp} / ${MON.maxHp}　🛡️ ${MON.shield}　⚔️ 單次 ${MON.dmg}　連擊 ${MON.lines} 道</span></p>
+      <div class="vg2-label">❤️ ${MON.hp} / ${MON.maxHp}</div>
+      <div class="vg2-bar vg2-bar-p"><div class="vg2-bar-in" style="width:${playerPct}%"></div></div>
+      <div class="vg2-items">${itemsHtml()}</div>
+      <p class="meta" style="margin:6px 0"><span>⚔️ 單次 ${MON.dmg}　連擊 ${MON.lines} 道　🛡️ ${MON.shield}</span></p>
       ${qHtml}
       <p style="color:var(--text-color);min-height:1.2em;text-align:center;font-size:.9rem">${esc(MON.log)}</p>`);
     if (q.type === "type") setTimeout(() => { const i = document.getElementById("vg2MonIn"); if (i) i.focus(); }, 30);
@@ -193,14 +221,15 @@
   function monPlayerHit() {
     const [a, b] = monsterDmgRange(MON.lv);
     const d = a + Math.floor(rnd() * (b - a + 1));
-    if (MON.hp - d <= 0 && MON.shield > 0) { MON.shield--; MON.hp = 1; MON.log = `怪物攻擊 ${d}！盾抵擋了致命傷害`; }
-    else { MON.hp = Math.max(0, MON.hp - d); MON.log = `怪物攻擊，受到 ${d} 點傷害`; }
+    if (MON.hp - d <= 0 && MON.shield > 0) { MON.shield--; MON.hp = 1; MON.log = `怪物攻擊 ${d}！盾抵擋了致命傷害`; MON.fx = { kind: "shield", dmg: d }; }
+    else { MON.hp = Math.max(0, MON.hp - d); MON.log = `怪物攻擊，受到 ${d} 點傷害`; MON.fx = { kind: "hurt", dmg: d }; }
     if (MON.hp <= 0) { MON.over = true; MON.won = false; }
   }
   function monAttack() {
     const total = MON.dmg * MON.lines;
     MON.mhp -= total;
     MON.log = `攻擊 ${MON.lines} 道，共 ${total} 傷害`;
+    MON.fx = { kind: "enemy", dmg: total, lines: MON.lines, hit: true };
     if (MON.mhp <= 0) {
       const lv = MON.lv;
       const got = dropFor(lv, MON.counts, rnd);
@@ -215,12 +244,37 @@
     monNewQuestion();
   }
   function applyItem(k) {
-    if (k === "heal") { MON.hp = Math.min(MON.maxHp, MON.hp + 20); return; }
+    if (k === "heal") { MON.counts.heal = (MON.counts.heal || 0) + 1; MON.hp = Math.min(MON.maxHp, MON.hp + 20); return; }
     if (k === "dmg") { MON.counts.dmg++; MON.dmg += 10; }
     if (k === "hp") { MON.counts.hp++; MON.maxHp = Math.min(300, MON.maxHp + 50); MON.hp = Math.min(MON.maxHp, MON.hp + 50); }
     if (k === "sh") { MON.counts.sh++; MON.shield = Math.min(2, MON.shield + 1); }
     if (k === "ln") { MON.counts.ln++; MON.lines = Math.min(15, MON.lines + 3); }
   }
+  const CSS_MON = `
+    .vg2-stage{position:relative;height:200px;border-radius:14px;border:1px solid var(--bd);background:linear-gradient(180deg,color-mix(in srgb,#60a5fa 18%,var(--card)),var(--card));overflow:hidden;margin-bottom:8px}
+    .vg2-mon{position:absolute;left:50%;top:14px;transform:translateX(-50%);font-size:76px;line-height:1}
+    .vg2-mid{font-size:96px}.vg2-big{font-size:118px}.vg2-king{font-size:130px;filter:drop-shadow(0 0 10px #facc15)}
+    .vg2-player{position:absolute;left:16px;bottom:8px;font-size:48px;line-height:1}
+    .fx-hit{animation:vg2hit .45s ease}
+    @keyframes vg2hit{0%{filter:brightness(2.2);transform:translate(-50%,0)}25%{transform:translate(-56%,0)}50%{transform:translate(-44%,0)}75%{transform:translate(-52%,0)}100%{transform:translate(-50%,0)}}
+    .fx-hurt{animation:vg2hurt .5s ease}
+    @keyframes vg2hurt{0%,100%{filter:none}25%,75%{filter:sepia(1) hue-rotate(-50deg) saturate(6)}}
+    .vg2-slash{position:absolute;color:#f43f5e;width:64px;height:64px;animation:vg2slash .5s ease forwards;opacity:0}
+    .vg2-slash svg{width:64px;height:64px}
+    @keyframes vg2slash{0%{opacity:0;transform:scale(.6) rotate(-20deg)}30%{opacity:1}100%{opacity:0;transform:scale(1.1) rotate(10deg)}}
+    .vg2-pop{position:absolute;right:20px;top:30px;font-weight:bold;font-size:1.6rem;color:#f43f5e;animation:vg2pop 1s ease forwards;pointer-events:none}
+    .vg2-pop.enemy{color:#facc15}
+    @keyframes vg2pop{0%{opacity:0;transform:translateY(10px)}20%{opacity:1}100%{opacity:0;transform:translateY(-40px)}}
+    .vg2-label{font-size:.85rem;text-align:center;margin:6px 0 2px;opacity:.8}
+    .vg2-bar-p .vg2-bar-in{background:#10b981}
+    .vg2-items{display:flex;gap:10px;justify-content:center;margin:8px 0}
+    .vg2-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--text-color);min-width:48px}
+    .vg2-item b{font-size:.8rem}
+  `;
+  const cssMon = document.createElement("style");
+  cssMon.textContent = CSS_MON;
+  document.head.appendChild(cssMon);
+
   const itemName = k => ({ heal: "❤️回血", dmg: "⚔️傷害", hp: "⌃血量上限", sh: "🛡️盾", ln: "連擊" })[k];
   function monAnswer(correct) {
     if (correct) monAttack();
