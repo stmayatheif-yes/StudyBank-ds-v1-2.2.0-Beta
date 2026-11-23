@@ -193,7 +193,7 @@
     const count = { heal: c.heal || 0, hp: c.hp, sh: MON.shield, dmg: c.dmg, ln: c.ln };
     const tiles = ["heal", "hp", "sh", "dmg", "ln"].map(k =>
       `<button class="vg2-tile ${MON.sel === k ? "on" : ""}" onclick="VG2.monSkill('${k}')">${ICON[k].replace(/width="\d+" height="\d+"/, 'width="34" height="34"')}<b>${count[k]}</b></button>`).join("");
-    const info = MON.sel ? `<div class="vg2-detail"><strong>${SKILL_INFO[MON.sel][0]}</strong><p>${SKILL_INFO[MON.sel][1]}</p></div>` : "";
+    const info = MON.sel ? `<div class="vg2-detail"><strong>${SKILL_INFO[MON.sel][0]}：${count[MON.sel]}${MON.sel === "sh" ? "個" : "次"}</strong><p>${SKILL_INFO[MON.sel][1]}</p></div>` : "";
     return `<div class="vg2-skills">${tiles}</div>${info}`;
   }
   function monDraw() {
