@@ -165,7 +165,7 @@
     monDraw();
   }
   function bossLabel(lv) { return lv === 50 ? "👑 魔王" : lv % 10 === 0 ? "🐉 大BOSS" : lv % 5 === 0 ? "👹 小BOSS" : "👾 怪物"; }
-    // ---------- 單字打怪：畫面 ----------
+      // ---------- 單字打怪：畫面 ----------
   const SVG_SLASH = `<svg viewBox="0 0 64 64" width="64" height="64" fill="currentColor" aria-hidden="true"><path d="M54 8C38 14 22 28 10 48c6-4 14-8 22-10C42 35 50 22 54 8z"/><path d="M58 24C44 29 30 41 20 56c5-3 12-6 19-8 8-3 15-13 19-24z" opacity="0.75"/><polygon points="14,16 16,22 22,24 16,26 14,32 12,26 6,24 12,22"/></svg>`;
   const ICON = {
     heal: `<svg viewBox="0 0 64 64" width="26" height="26" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"><path d="M32 56C10 40 6 30 6 22a12 12 0 0 1 26-4 12 12 0 0 1 26 4c0 8-4 18-26 34z"/></svg>`,
@@ -176,10 +176,20 @@
   };
   const monEmoji = lv => lv === 50 ? "👑" : lv % 10 === 0 ? "🐉" : lv % 5 === 0 ? "👹" : "👾";
   const monSize = lv => lv === 50 ? "vg2-king" : lv % 10 === 0 ? "vg2-big" : lv % 5 === 0 ? "vg2-mid" : "";
+  const SKILL_INFO = {
+    heal: ["已回血次數", "每次獲得回血道具，將恢復 20 生命值。"],
+    hp: ["已提升血量上限次數", "每次獲得血量上限道具，上限 +50，並恢復 50 生命值（上限 300）。"],
+    sh: ["盾剩餘數量", "抵擋一次血量歸零的致命傷害，用完就沒有了（上限 2 個）。"],
+    dmg: ["已提升傷害次數", "每次獲得傷害道具，單次傷害 +10（最多 10 次）。"],
+    ln: ["已增加連擊道數", "每次獲得連擊道具，攻擊道數 +3（上限 15 道）。"]
+  };
   function itemsHtml() {
     const c = MON.counts;
-    const item = (k, n) => `<div class="vg2-item" title="${itemName(k)}">${ICON[k]}<b>${n}</b></div>`;
-    return item("heal", c.heal || 0) + item("hp", c.hp) + item("sh", c.sh) + item("dmg", c.dmg) + item("ln", c.ln);
+    const count = { heal: c.heal || 0, hp: c.hp, sh: MON.shield, dmg: c.dmg, ln: c.ln };
+    const tiles = ["heal", "hp", "sh", "dmg", "ln"].map(k =>
+      `<button class="vg2-tile ${MON.sel === k ? "on" : ""}" onclick="VG2.monSkill('${k}')">${ICON[k].replace(/width="\d+" height="\d+"/, 'width="34" height="34"')}<b>${count[k]}</b></button>`).join("");
+    const info = MON.sel ? `<div class="vg2-detail"><strong>${SKILL_INFO[MON.sel][0]}</strong><p>${SKILL_INFO[MON.sel][1]}</p></div>` : "";
+    return `<div class="vg2-skills">${tiles}</div>${info}`;
   }
   function monDraw() {
     if (!MON.over && !MON.q) {
@@ -212,10 +222,11 @@
       <div class="vg2-bar"><div class="vg2-bar-in" style="width:${hpPct}%"></div></div>
       <div class="vg2-label">❤️ ${MON.hp} / ${MON.maxHp}</div>
       <div class="vg2-bar vg2-bar-p"><div class="vg2-bar-in" style="width:${playerPct}%"></div></div>
-      <div class="vg2-items">${itemsHtml()}</div>
+      ${itemsHtml()}
       <p class="meta" style="margin:6px 0"><span>⚔️ 單次 ${MON.dmg}　連擊 ${MON.lines} 道　🛡️ ${MON.shield}</span></p>
       ${qHtml}
-      <p style="color:var(--text-color);min-height:1.2em;text-align:center;font-size:.9rem">${esc(MON.log)}</p>`);
+      <p style="color:var(--text-color);min-height:1.2em;text-align:center;font-size:.9rem">${esc(MON.log)}</p>
+      <button style="width:100%;margin:6px 0 0;background:var(--bd);color:var(--text-color);box-shadow:none" onclick="VG2.monGiveUp()">放棄本次挑戰（從第 1 關重來）</button>`);
     if (q.type === "type") setTimeout(() => { const i = document.getElementById("vg2MonIn"); if (i) i.focus(); }, 30);
   }
   function monPlayerHit() {
@@ -234,7 +245,7 @@
       const lv = MON.lv;
       const got = dropFor(lv, MON.counts, rnd);
       got.forEach(applyItem);
-      MON.log = `擊敗怪物！掉落：${got.map(itemName).join("、")}`;
+      MON.log = got.length ? `擊敗怪物！獲得：${got.map(itemName).join("、")}` : "擊敗怪物！這次沒有掉落裝備";
       if (lv >= 50) { MON.over = true; MON.won = true; monDraw(); return; }
       MON.lv++; MON.q = null;
       monDraw();
@@ -267,9 +278,13 @@
     @keyframes vg2pop{0%{opacity:0;transform:translateY(10px)}20%{opacity:1}100%{opacity:0;transform:translateY(-40px)}}
     .vg2-label{font-size:.85rem;text-align:center;margin:6px 0 2px;opacity:.8}
     .vg2-bar-p .vg2-bar-in{background:#10b981}
-    .vg2-items{display:flex;gap:10px;justify-content:center;margin:8px 0}
-    .vg2-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--text-color);min-width:48px}
-    .vg2-item b{font-size:.8rem}
+    .vg2-skills{display:flex;gap:10px;justify-content:center;margin:10px 0;padding:10px;border-radius:18px;background:color-mix(in srgb,#f9a8d4 45%,var(--card))}
+    .vg2-tile{width:58px;height:70px;margin:0;padding:6px 0;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:var(--card);color:var(--text-color);border:1px solid var(--bd);box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
+    .vg2-tile svg{color:var(--text-color)}
+    .vg2-tile b{font-size:.85rem}
+    .vg2-tile.on{outline:2px solid #ec4899;outline-offset:-2px}
+    .vg2-detail{border:1px dashed var(--bd);border-radius:12px;padding:10px 12px;margin:6px 0 10px;background:var(--bg);font-size:.9rem}
+    .vg2-detail p{margin:4px 0 0;opacity:.8}
   `;
   const cssMon = document.createElement("style");
   cssMon.textContent = CSS_MON;
