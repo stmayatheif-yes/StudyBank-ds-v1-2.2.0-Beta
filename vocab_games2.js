@@ -407,7 +407,7 @@
   VGame.start = function (k) {
     document.getElementById("vgameMenu") && document.getElementById("vgameMenu").classList.remove("active");
     if (k === "grid") { clearAll(); return gridSetup(); }
-    if (k === "monster") { clearAll(); window.__monActive = true; return monStart(); }
+    if (k === "monster") { clearAll(); window.__monActive = true; if (MON.started && !MON.over) return monResume(); return monStart(); }
     if (k === "bubble") { return bubSetup(); }
     return _start(k);
   };
@@ -423,6 +423,8 @@
   }
 
   const VG2 = {
+    monSkill(k) { MON.sel = MON.sel === k ? null : k; monDraw(); },
+    monGiveUp() { if (!confirm("確定放棄本次挑戰？將從第 1 關重新開始。")) return; MON.over = true; MON.won = false; MON.started = false; monDraw(); },
     gridSetup, gridStart: gridStartGame, gridReveal, gridGuess,
     monStart, monChoice(k) { monAnswer(MON.q.options[k] === MON.q.w.zh); },
     monType() { const v = (document.getElementById("vg2MonIn").value || "").trim().toLowerCase(); monAnswer(acceptSet(MON.q.w.en).has(v)); },
