@@ -14,8 +14,8 @@
   const LOCAL_TRACKS = [
      { id: "thunder1", title: "Thunder and Lightning", artist: "Luminewave", src: "music/luminewave-thunder-and-lightning-commercial-version-637008.mp3", cover: "music/thunder1.jpg" },
      { id: "thunder2", title: "Dominator", artist: "AudioAtlant", src: "music/audioatlant-dominator-action-countdown-trailer-main-554635.mp3", cover: "music/thunder2.png" },
-     { id: "thunder3", title: "golden hour [mqms2]", artist: "阿扣叩叩", src: "music/阿扣叩叩 - golden hour [mqms2].ogg", cover: "" },
-     { id: "thunder4", title: "aLIEz [mqms2]", artist: "阿扣叩叩", src: "music/阿扣叩叩 - aLIEz [mqms2].ogg", cover: "" },
+     { id: "thunder3", title: "golden hour [mqms2]", artist: "阿扣叩叩", src: "music/阿扣叩叩 - golden hour [mqms2].ogg", cover: "PlayerAlbumCover_18644029501795455861749.jpg" },
+     { id: "thunder4", title: "aLIEz [mqms2]", artist: "阿扣叩叩", src: "music/阿扣叩叩 - aLIEz [mqms2].ogg", cover: "aLIEz.jpg" },
      { id: "thunder5", title: "「拉海洛」之心", artist: "鸣潮先约电台", src: "music/luminewave-thunder-and-lightning-commercial-version-637008.mp3", cover: "" },
      { id: "6", title: "远航星的告别", artist: "鸣潮先约电台", src: "music/placeholder-6.mp3", cover: "music/placeholder-6.jpg" },
   { id: "7", title: "玄翎谣", artist: "鸣潮先约电台", src: "music/placeholder-7.mp3", cover: "music/placeholder-7.jpg" },
