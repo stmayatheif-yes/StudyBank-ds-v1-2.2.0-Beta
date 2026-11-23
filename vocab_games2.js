@@ -397,7 +397,7 @@
       <div style="display:flex;flex-direction:column;gap:10px">
         ${all.map(g => `<button class="vg-pick" onclick="VGame.start('${g.k}')"><strong>${g.name}</strong><span>${g.desc}</span></button>`).join("")}
       </div>
-      <div class="modal-actions"><button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="document.getElementById('vgameMenu').classList.remove('active')">取消</button></div>
+      <div class="modal-actions"><button class="go" onclick="VG2.backVocab()">返回單字</button><button class="go" style="background:var(--bd);color:var(--text-color);box-shadow:none" onclick="document.getElementById('vgameMenu').classList.remove('active')">取消</button></div>
     </div>`;
     m.classList.add("active");
   }
@@ -412,7 +412,7 @@
     return _start(k);
   };
   const _quit = VGame.quit;
-  VGame.quit = function () { clearAll(); window.__monActive = false; return _quit(); };
+  VGame.quit = function () { clearAll(); window.__monActive = false; window.__vgameActive = false; menu(); };
 
   function bubSetup() {
     frame("🫧 射擊闖關", `<p style="text-align:center">選擇玩法</p>
@@ -423,6 +423,7 @@
   }
 
   const VG2 = {
+    backVocab() { document.getElementById("vgameMenu").classList.remove("active"); window.__vgameActive = false; renderVocab(); },
     monSkill(k) { MON.sel = MON.sel === k ? null : k; monDraw(); },
     monGiveUp() { if (!confirm("確定放棄本次挑戰？將從第 1 關重新開始。")) return; MON.over = true; MON.won = false; MON.started = false; monDraw(); },
     gridSetup, gridStart: gridStartGame, gridReveal, gridGuess,
