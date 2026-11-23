@@ -144,11 +144,16 @@
   // ==========================================
   // 2. 單字打怪（回合制）
   // ==========================================
-  const MON = { lv: 1, hp: 100, maxHp: 100, shield: 0, dmg: 10, lines: 1, mhp: 0, mhpMax: 0, counts: { dmg: 0, hp: 0, sh: 0, ln: 0 }, q: null, log: "", over: false, won: false };
-  function monStart() {
-    Object.assign(MON, { lv: 1, hp: 100, maxHp: 100, shield: 0, dmg: 10, lines: 1, counts: { dmg: 0, hp: 0, sh: 0, ln: 0 }, log: "", over: false, won: false });
+  const MON = { lv: 1, hp: 100, maxHp: 100, shield: 0, dmg: 10, lines: 1, mhp: 0, mhpMax: 0, counts: { dmg: 0, hp: 0, sh: 0, ln: 0 }, q: null, log: "", over: false, won: false, started: false, sel: null};
+    function monStart() {
+    Object.assign(MON, { lv: 1, hp: 100, maxHp: 100, shield: 0, dmg: 10, lines: 1, counts: { dmg: 0, hp: 0, sh: 0, ln: 0 }, log: "", over: false, won: false, started: true, sel: null, q: null });
     monNewLevel();
   }
+  // 退出再進入：沿用目前的進度；若停在關卡切換中，就直接進入下一關
+  function monResume() {
+    if (!MON.q) monNewLevel(); else monDraw();
+  }
+
   function monNewLevel() {
     MON.mhpMax = monsterHp(MON.lv); MON.mhp = MON.mhpMax;
     monNewQuestion();
