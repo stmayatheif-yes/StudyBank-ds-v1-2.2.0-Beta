@@ -122,11 +122,15 @@
     timers.push(setInterval(tickWordle, 1000));
     drawWordle();
   }
+  function updateTimer(sec) {
+    const el = document.getElementById("vgTimer");
+    if (el) el.textContent = String(Math.floor(sec / 60)).padStart(2, "0") + ":" + String(sec % 60).padStart(2, "0");
+  }
   function tickWordle() {
     if (!W || W.over) return;
     W.left--;
-    if (W.left <= 0) { W.over = true; W.left = 0; }
-    drawWordle();
+    if (W.left <= 0) { W.over = true; W.left = 0; drawWordle(); return; }
+    updateTimer(W.left);
   }
   // 顏色：g 位置正確，y 字母有但位置不對，n 沒有
   function score(guess, target) {
@@ -155,7 +159,7 @@
     const blanks = Array(WORDLE_TRIES - W.rows.length - (W.over ? 0 : 0)).fill(0).map(() => `<div class="vg-wrow">${Array(W.word.length).fill(0).map(() => `<span class="vg-wc">·</span>`).join("")}</div>`).join("");
     const mm = String(Math.floor(W.left / 60)).padStart(2, "0"), ss = String(W.left % 60).padStart(2, "0");
     const end = W.over ? `<div class="vg-result"><p>${W.won ? "猜對了！" : "時間到或次數用完"}　答案：<strong>${esc(W.word)}</strong></p><p class="meta"><span>${esc(W.zh)}</span></p><button class="go" onclick="VGame.again('wordle')">再玩一次</button></div>` : "";
-    frame("🔠 限時猜字", `<p class="meta"><span>剩餘 ${mm}:${ss}　次數 ${W.rows.length} / ${WORDLE_TRIES}</span></p>
+    frame("🔠 限時猜字", `<p class="meta"><span>剩餘 <span id="vgTimer">${mm}:${ss}</span>　次數 ${W.rows.length} / ${WORDLE_TRIES}</span></p>
       <p style="text-align:center;margin:6px 0 10px">提示：${esc(W.zh)}（${W.word.length} 個字母）</p>
       <div class="vg-wordle">${rows}${W.over ? "" : blanks}</div>
       ${W.over ? end : `<input type="text" id="vgWordleIn" maxlength="${W.word.length}" autocomplete="off" autocapitalize="off" spellcheck="false" style="width:100%;box-sizing:border-box;text-align:center;font-size:1.2rem;text-transform:lowercase" onkeypress="if(event.key==='Enter')VGame.wordleSubmit()">
@@ -178,8 +182,8 @@
   function tickChain() {
     if (!C || C.over) return;
     C.left--;
-    if (C.left <= 0) { C.over = true; C.left = 0; }
-    drawChain();
+    if (C.left <= 0) { C.over = true; C.left = 0; drawChain(); return; }
+    updateTimer(C.left);
   }
   function submitChain(val) {
     if (C.over) return;
@@ -198,7 +202,7 @@
     const mm = String(Math.floor(C.left / 60)).padStart(2, "0"), ss = String(C.left % 60).padStart(2, "0");
     const list = C.chain.map(w => `<span class="vg-tag">${esc(w)}</span>`).join("");
     const end = C.over ? `<div class="vg-result"><p>結束！接龍 ${C.chain.length} 個字</p><button class="go" onclick="VGame.again('chain')">再玩一次</button></div>` : "";
-    frame("🔗 限時接龍", `<p class="meta"><span>剩餘 ${mm}:${ss}　已接 ${C.chain.length} 個</span></p>
+    frame("🔗 限時接龍", `<p class="meta"><span>剩餘 <span id="vgTimer">${mm}:${ss}</span>　已接 ${C.chain.length} 個</span></p>
       <p style="text-align:center;font-size:1.3rem;margin:10px 0">請輸入以 <strong style="color:var(--ac)">${esc(C.need.toUpperCase())}</strong> 開頭的英文單字</p>
       <div class="vg-tags">${list || `<span class="meta" style="margin:0"><span>還沒有接到字</span></span>`}</div>
       ${C.over ? end : `<input type="text" id="vgChainIn" autocomplete="off" autocapitalize="off" spellcheck="false" style="width:100%;box-sizing:border-box;text-align:center;font-size:1.2rem" onkeypress="if(event.key==='Enter')VGame.chainSubmit()">
@@ -267,11 +271,11 @@
     testBtn.parentElement.insertBefore(row, testBtn);
     row.appendChild(testBtn);
     testBtn.classList.add("vg-half");
-    testBtn.style.margin = "0";
     const gameBtn = document.createElement("button");
     gameBtn.className = "go vg-half";
     gameBtn.textContent = "🎮 小遊戲";
     gameBtn.onclick = () => VGame.menu();
     row.appendChild(gameBtn);
+    [testBtn, gameBtn].forEach(b => { b.style.margin = "0"; b.style.height = "48px"; b.style.padding = "0 10px"; b.style.width = "auto"; b.style.flex = "1"; });
   };
 })();
