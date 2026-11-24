@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>山河築夢｜StudyBank</title>
+<style>
+:root{--ink:#463d35;--paper:#f7f0df;--panel:#fffaf0;--line:#d8c8aa;--green:#66866b;--gold:#c08b43}
+*{box-sizing:border-box}body{margin:0;background:#e9dfca;color:var(--ink);font-family:system-ui,-apple-system,"Noto Sans TC",sans-serif;overflow:hidden}
+.app{height:100dvh;display:flex;flex-direction:column;background:linear-gradient(145deg,#f3ead7,#e5dcc8)}
+.top{height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#fff9eddd;border-bottom:1px solid var(--line);z-index:2}
+.brand{font-weight:900;letter-spacing:.08em}.brand small{display:block;font-size:10px;color:#897966;letter-spacing:.16em}
+.stats{display:flex;gap:12px;font-size:12px;font-weight:700}.stat{white-space:nowrap}
+.main{position:relative;flex:1;min-height:0;overflow:hidden}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+canvas:active{cursor:grabbing}
+.hud{position:absolute;top:12px;left:12px;display:flex;gap:7px;flex-wrap:wrap;max-width:calc(100% - 24px);pointer-events:none}
+.pill{background:#fff9edeb;border:1px solid var(--line);border-radius:99px;padding:7px 10px;font-size:11px;box-shadow:0 3px 10px #57452a12}
+.toast{position:absolute;left:50%;top:62px;transform:translateX(-50%);background:#4c5e4b;color:white;padding:9px 14px;border-radius:12px;font-size:12px;opacity:0;transition:.25s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1}
+.bottom{background:#fff9ed;border-top:1px solid var(--line);padding:8px 10px calc(8px + env(safe-area-inset-bottom));z-index:2}
+.tools{display:flex;gap:7px;overflow-x:auto;padding-bottom:5px;scrollbar-width:none}.tools::-webkit-scrollbar{display:none}
+.tool{flex:0 0 auto;border:1px solid var(--line);background:#f8f0df;color:var(--ink);border-radius:12px;padding:8px 11px;font-size:12px;font-weight:700;min-width:66px}
+.tool.active{background:#627d63;color:white;border-color:#627d63}
+.actions{display:flex;gap:7px;align-items:center;justify-content:space-between;padding-top:5px}
+button{font:inherit;cursor:pointer}.action{border:0;border-radius:10px;padding:8px 11px;background:#e9dfca;color:#51483e;font-size:11px;font-weight:700}
+.action.primary{background:#bd8845;color:white}.hint{font-size:10px;color:#8c7e6c;white-space:nowrap}
+.panel{position:absolute;right:12px;top:12px;width:min(240px,calc(100% - 24px));background:#fffaf0f2;border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 8px 28px #3b30231c;display:none;z-index:3}
+.panel.open{display:block}.panel h3{margin:0 0 8px;font-size:14px}.panel p{font-size:11px;line-height:1.6;color:#7e7060;margin:5px 0 10px}
+.panel button{width:100%;margin-top:5px}.close{float:right;border:0;background:transparent;font-size:18px;color:#8a7c69}
+@media(min-width:800px){.bottom{padding-left:18px;padding-right:18px}.tools{justify-content:center}.actions{max-width:900px;margin:auto}.stats{gap:22px}.top{padding:0 24px}}
+</style></head>
+<body><div class="app">
+<header class="top"><div class="brand">山河築夢 <small>SHAN HE · DREAM TOWN</small></div>
+<div class="stats"><div class="stat">◈ <span id="coin">1200</span></div><div class="stat">⌂ <span id="people">12</span></div><div class="stat">✦ <span id="prosper">0</span></div></div></header>
+<main class="main"><canvas id="world"></canvas>
+<div class="hud"><span class="pill" id="clock">☀️ 第 1 日 · 08:00</span><span class="pill" id="weather">晴朗</span><span class="pill">拖曳移動畫面・滾輪縮放</span></div>
+<div class="toast" id="toast"></div>
+<section class="panel" id="info"><button class="close" id="closeInfo">×</button><h3 id="infoTitle">城鎮資訊</h3><p id="infoText">選取地圖上的建築以查看資訊。</p><button class="action" id="demolish">拆除選取物（免費）</button></section>
+</main>
+<footer class="bottom"><div class="tools" id="tools">
+<button class="tool active" data-tool="select">⌖ 選取</button><button class="tool" data-tool="road">▱ 道路</button><button class="tool" data-tool="house">⌂ 民居 · 120</button><button class="tool" data-tool="teahouse">♨ 茶樓 · 260</button><button class="tool" data-tool="academy">▤ 書院 · 320</button><button class="tool" data-tool="shop">▣ 商鋪 · 180</button><button class="tool" data-tool="garden">❀ 庭院 · 100</button><button class="tool" data-tool="tree">♣ 樹木 · 35</button><button class="tool" data-tool="water">≈ 水域</button></div>
+<div class="actions"><span class="hint" id="toolHint">選取建築，或拖曳地圖</span><div style="display:flex;gap:6px"><button class="action" id="weatherBtn">天候</button><button class="action" id="saveBtn">儲存</button><button class="action primary" id="moreBtn">管理 ▾</button></div></div></footer>
+<section class="panel" id="manage" style="top:auto;bottom:110px"><button class="close" id="closeManage">×</button><h3>城鎮管理</h3><p>你的城鎮由你決定。沒有答題門檻，也沒有建造解鎖條件。</p><button class="action" id="exportBtn">匯出城鎮存檔</button><button class="action" id="importBtn">匯入城鎮存檔</button><button class="action" id="resetBtn">重新開墾（清空地圖）</button><input type="file" id="fileInput" accept=".json,application/json" hidden></section>
+</div>
+<script>
+(()=>{
+const canvas=document.getElementById('world'),ctx=canvas.getContext('2d');
+const $=id=>document.getElementById(id), N=13, TW=62, TH=31;
+let map=[],objects=[],tool='select',selected=null,coin=1200,day=1,hour=8,weather=0,cam={x:0,y:0,scale:1},drag=null,lastTap=0;
+const costs={road:4,house:120,teahouse:260,academy:320,shop:180,garden:100,tree:35,water:0};
+const names={road:'石板道路',house:'臨河民居',teahouse:'茶樓',academy:'書院',shop:'商鋪',garden:'庭院',tree:'樹木',water:'水域'};
+const colors=['#9dbb9a','#a7c59d','#94b38d','#acc79e'];
+function initMap(){map=Array.from({length:N},()=>Array.from({length:N},(_,x)=>({type:(x>7&&x<10&&Math.random()>.45)?'water':'grass'})));for(let y=0;y<N;y++)map[y][8].type='water';map[6][8].type='water';map[7][8].type='water';objects=[{x:3,y:4,type:'house'},{x:5,y:6,type:'teahouse'},{x:2,y:8,type:'tree'},{x:6,y:3,type:'shop'}];selected=null}
+function resize(){let r=canvas.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2);canvas.width=r.width*d;canvas.height=r.height*d;ctx.setTransform(d,0,0,d,0,0);draw()}
+function iso(x,y){return {x:(x-y)*TW/2,y:(x+y)*TH/2}}
+function center(){return {x:canvas.clientWidth/2+cam.x,y:canvas.clientHeight*.43+cam.y}}
+function project(x,y){let p=iso(x,y),c=center();return {x:c.x+p.x*cam.scale,y:c.y+p.y*cam.scale}}
+function polygon(points,fill,stroke='#6f8066'){ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.stroke()}
+function diamond(x,y,fill){let p=project(x,y),w=TW*cam.scale/2,h=TH*cam.scale/2;polygon([{x:p.x,y:p.y-h},{x:p.x+w,y:p.y},{x:p.x,y:p.y+h},{x:p.x-w,y:p.y}],fill,'#8da27e')}
+function drawBuilding(o){let p=project(o.x,o.y),s=cam.scale;let x=p.x,y=p.y;
+if(o.type==='tree'){ctx.fillStyle='#80694d';ctx.fillRect(x-2*s,y-18*s,4*s,20*s);for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(x+(i-1)*7*s,y-(25+i%2*7)*s,12*s,0,Math.PI*2);ctx.fillStyle=['#557b58','#6d9366','#82a875'][i];ctx.fill();ctx.strokeStyle='#496b4d';ctx.stroke()}return}
+if(o.type==='road'){diamond(o.x,o.y,'#c5b69b');return}
+if(o.type==='garden'){diamond(o.x,o.y,'#8eaf78');ctx.fillStyle='#e8c77c';for(let i=0;i<4;i++){ctx.beginPath();ctx.arc(x+(i%2?8:-8)*s,y+(i<2?-3:5)*s,2.5*s,0,7);ctx.fill()}return}
+let base= o.type==='house'?'#e9d7b7':o.type==='teahouse'?'#d8c19c':o.type==='academy'?'#d6c9a8':'#e6cda5';
+let roof=o.type==='house'?'#a95f4d':o.type==='teahouse'?'#567b69':o.type==='academy'?'#687e73':'#bd8148';
+let w=(o.type==='teahouse'?25:20)*s,h=(o.type==='academy'?22:18)*s;
+polygon([{x:x-w,y:y-h},{x:x,y:y-h-11*s},{x:x+w,y:y-h},{x:x,y:y-h+10*s}],base,'#927c61');
+polygon([{x:x-w,y:y-h},{x:x,y:y-h-17*s},{x:x+5*s,y:y-h-12*s},{x:x-w+5*s,y:y-h+4*s}],roof,'#795342');
+polygon([{x:x,y:y-h-17*s},{x:x+w,y:y-h},{x:x+w-5*s,y:y-h+4*s},{x:x+5*s,y:y-h-12*s}],roof,'#795342');
+polygon([{x:x-w+3*s,y:y-h+4*s},{x:x,y:y-h+14*s},{x:x+w-3*s,y:y-h+4*s},{x:x,y:y+8*s}],base,'#927c61');
+ctx.fillStyle='#70523f';ctx.fillRect(x-3*s,y-2*s,6*s,10*s);
+ctx.fillStyle='#f2d28c';ctx.fillRect(x-12*s,y-5*s,5*s,6*s);ctx.fillRect(x+7*s,y-5*s,5*s,6*s);
+if(o.type==='teahouse'||o.type==='academy'){ctx.strokeStyle='#795342';ctx.lineWidth=2*s;ctx.beginPath();ctx.moveTo(x,y-h-16*s);ctx.lineTo(x,y-h-24*s);ctx.stroke()}
+}
+function draw(){let w=canvas.clientWidth,h=canvas.clientHeight;ctx.clearRect(0,0,w,h);let g=ctx.createLinearGradient(0,0,0,h);g.addColorStop(0,'#c7dfd0');g.addColorStop(.58,'#dce8c9');g.addColorStop(1,'#e8dfc5');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+for(let sum=0;sum<2*N-1;sum++)for(let x=0;x<N;x++){let y=sum-x;if(y<0||y>=N)continue;let t=map[y][x].type;diamond(x,y,t==='water'?'#83b8c0':colors[(x*7+y*3)%4]);if(t==='water'){let p=project(x,y);ctx.strokeStyle='#c4e3dc';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(p.x-8*cam.scale,p.y);ctx.lineTo(p.x+8*cam.scale,p.y);ctx.stroke()}}
+objects.sort((a,b)=>(a.x+a.y)-(b.x+b.y)).forEach(drawBuilding);
+if(selected){let p=project(selected.x,selected.y);ctx.strokeStyle='#d38b36';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(p.x,p.y,25*cam.scale,12*cam.scale,0,0,7);ctx.stroke()}
+let p=project(0,0),q=project(N-1,N-1);ctx.strokeStyle='#fff8dfaa';ctx.lineWidth=1;ctx.strokeRect(Math.min(p.x,q.x)-30,Math.min(p.y,q.y)-30,Math.abs(q.x-p.x)+60,Math.abs(q.y-p.y)+60);
+}
+function screenToTile(sx,sy){let c=center(),dx=(sx-c.x)/cam.scale,dy=(sy-c.y)/cam.scale;let a=dx/(TW/2),b=dy/(TH/2);let x=Math.round((a+b)/2),y=Math.round((b-a)/2);return {x,y}}
+function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),1600)}
+function updateStats(){$('coin').textContent=coin;$('people').textContent=12+objects.filter(o=>o.type==='house').length*3;$('prosper').textContent=objects.length*5}
+function selectTool(t){tool=t;document.querySelectorAll('.tool').forEach(b=>b.classList.toggle('active',b.dataset.tool===t));$('toolHint').textContent=t==='select'?'點選建築查看資訊':'選擇地塊即可放置：'+names[t]}
+function place(x,y){if(x<0||y<0||x>=N||y>=N)return;if(tool==='select'){let o=objects.find(o=>o.x===x&&o.y===y);selected=o||null;if(o){$('infoTitle').textContent=names[o.type];$('infoText').textContent=`座標：${x+1}, ${y+1}。這是城鎮中的${names[o.type]}。`;$('info').classList.add('open')}else $('info').classList.remove('open');draw();return}
+if(tool==='water'){map[y][x].type='water';toast('已整理水域');draw();save(false);return}
+if(objects.some(o=>o.x===x&&o.y===y)){toast('這個位置已經有建築了');return}
+let cost=costs[tool]||0;if(coin<cost){toast('資金不足');return}
+coin-=cost;objects.push({x,y,type:tool});updateStats();draw();save(false);toast('已建造：'+names[tool])}
+canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);drag={x:e.clientX,y:e.clientY,cx:cam.x,cy:cam.y,moved:false}});
+canvas.addEventListener('pointerup',e=>{if(!drag)return;let dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.hypot(dx,dy)>7){cam.x=drag.cx+dx;cam.y=drag.cy+dy;drag.moved=true;draw()}else{let r=canvas.getBoundingClientRect(),t=screenToTile(e.clientX-r.left,e.clientY-r.top);place(t.x,t.y)}drag=null});
+canvas.addEventListener('pointermove',e=>{if(drag&&e.buttons){cam.x=drag.cx+e.clientX-drag.x;cam.y=drag.cy+e.clientY-drag.y;draw()}});
+canvas.addEventListener('wheel',e=>{e.preventDefault();cam.scale=Math.max(.55,Math.min(1.8,cam.scale*(e.deltaY<0?1.08:.92)));draw()},{passive:false});
+document.querySelectorAll('.tool').forEach(b=>b.onclick=()=>selectTool(b.dataset.tool));
+$('closeInfo').onclick=()=>$('info').classList.remove('open');$('demolish').onclick=()=>{if(!selected)return;objects=objects.filter(o=>o!==selected);selected=null;$('info').classList.remove('open');updateStats();draw();save(false);toast('已拆除建築')};
+function save(show=true){let data={version:1,map,objects,coin,day,hour,weather};localStorage.setItem('shanhe-town-save',JSON.stringify(data));if(show)toast('城鎮已儲存')}
+function load(){try{let d=JSON.parse(localStorage.getItem('shanhe-town-save'));if(d&&d.version===1){map=d.map;objects=d.objects;coin=d.coin;day=d.day;hour=d.hour;weather=d.weather;updateStats();return true}}catch(e){}return false}
+$('saveBtn').onclick=()=>save(true);$('moreBtn').onclick=()=>$('manage').classList.toggle('open');$('closeManage').onclick=()=>$('manage').classList.remove('open');
+$('exportBtn').onclick=()=>{let blob=new Blob([localStorage.getItem('shanhe-town-save')||'{}'],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='山河築夢-城鎮存檔.json';a.click();URL.revokeObjectURL(a.href);toast('已匯出存檔')};
+$('importBtn').onclick=()=>$('fileInput').click();$('fileInput').onchange=e=>{let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{try{let d=JSON.parse(r.result);if(d.version!==1||!Array.isArray(d.map)||!Array.isArray(d.objects))throw 0;localStorage.setItem('shanhe-town-save',JSON.stringify(d));load();draw();toast('存檔匯入成功')}catch(err){toast('存檔格式不正確')}};r.readAsText(f)};
+$('resetBtn').onclick=()=>{if(confirm('確定清空目前城鎮？建議先匯出存檔。')){initMap();coin=1200;day=1;hour=8;save(false);updateStats();draw();toast('已重新開墾')}};
+const weathers=['晴朗','細雨','薄雪'];$('weatherBtn').onclick=()=>{weather=(weather+1)%3;$('weather').textContent=['☀️ 晴朗','🌧️ 細雨','❄️ 薄雪'][weather];toast('天候已切換：'+weathers[weather])};
+function tick(){hour+=1;if(hour>=24){hour=0;day++}let h=hour,icon=h>=6&&h<17?'☀️':h>=17&&h<19?'🌇':'🌙';$('clock').textContent=`${icon} 第 ${day} 日 · ${String(h).padStart(2,'0')}:00`;if(day%1===0&&hour===0)save(false)}
+setInterval(tick,30000);
+initMap();load();updateStats();$('weather').textContent='☀️ 晴朗';window.addEventListener('resize',resize);resize();
+})();
+</script></body></html>
