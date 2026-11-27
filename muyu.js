@@ -65,7 +65,7 @@
 
   var css =
     '#muyu{position:fixed;right:14px;bottom:calc(' + BOTTOM_OFFSET + 'px + env(safe-area-inset-bottom,0px));z-index:900;display:flex;flex-direction:column;align-items:center;gap:2px;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}' +
-    '#muyu-hit{width:68px;height:62px;padding:0;border:0;background:none;cursor:pointer;filter:drop-shadow(0 3px 4px rgba(0,0,0,.28))}' +
+    '#muyu{touch-action:none}#muyu-hit{width:68px;height:62px;padding:0;border:0;background:none;cursor:grab;touch-action:none;filter:drop-shadow(0 3px 4px rgba(0,0,0,.28))}' +
     '#muyu-hit svg{width:100%;height:100%;display:block}' +
     '#muyu-count{font-size:12px;line-height:1.2;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(40,28,18,.78);color:#f6e7c1}' +
     '#muyu-mute{position:absolute;top:-10px;left:-14px;width:26px;height:26px;border-radius:50%;border:0;font-size:13px;cursor:pointer;background:rgba(40,28,18,.78);color:#f6e7c1}' +
@@ -191,7 +191,62 @@
       save();
     }
 
-    $hit.addEventListener('click', tap);
+    // ===== 拖移：按住木魚移動，位置會記住；輕點才算敲木魚 =====
+    var POS_KEY = 'sb_muyu_pos', hasPos = false, drag = null, dragged = false;
+
+    function clampPos(l, t) {
+      var w = root.offsetWidth, h = root.offsetHeight;
+      l = Math.max(18, Math.min(window.innerWidth - w - 4, l)); // 左側留位置給靜音鈕
+      t = Math.max(30, Math.min(window.innerHeight - h - 4, t));
+      return [l, t];
+    }
+    function applyPos(l, t) {
+      var p = clampPos(l, t);
+      root.style.left = p[0] + 'px';
+      root.style.top = p[1] + 'px';
+      root.style.right = 'auto';
+      root.style.bottom = 'auto';
+      hasPos = true;
+    }
+    function savePos() {
+      var r = root.getBoundingClientRect();
+      try { localStorage.setItem(POS_KEY, JSON.stringify([r.left, r.top])); } catch (e) {}
+    }
+    try {
+      var saved = JSON.parse(localStorage.getItem(POS_KEY));
+      if (saved && isFinite(saved[0]) && isFinite(saved[1])) applyPos(saved[0], saved[1]);
+    } catch (e) {}
+
+    root.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('#muyu-mute')) return;
+      var r = root.getBoundingClientRect();
+      drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, l: r.left, t: r.top };
+      dragged = false;
+    });
+    window.addEventListener('pointermove', function (e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      var dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+      if (!dragged && Math.sqrt(dx * dx + dy * dy) < 8) return; // 小於 8px 視為點擊
+      dragged = true;
+      applyPos(drag.l + dx, drag.t + dy);
+    });
+    function endDrag(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (dragged) savePos();
+      drag = null;
+    }
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
+    window.addEventListener('resize', function () {
+      if (!hasPos) return;
+      var r = root.getBoundingClientRect();
+      applyPos(r.left, r.top);
+    });
+
+    $hit.addEventListener('click', function () {
+      if (dragged) { dragged = false; return; } // 剛拖完不算敲
+      tap();
+    });
     $mute.addEventListener('click', function () {
       muted = !muted;
       try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch (e) {}
